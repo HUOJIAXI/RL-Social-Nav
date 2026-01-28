@@ -153,19 +153,24 @@ class CADRL(Policy):
             self.action_values = list()
             max_min_value = float('-inf')
             max_action = None
-            for action in self.action_space:
-                next_self_state = self.propagate(state.self_state, action)
-                ob, reward, done, info = self.env.onestep_lookahead(action)
-                batch_next_states = torch.cat([torch.Tensor([next_self_state + next_human_state]).to(self.device)
-                                              for next_human_state in ob], dim=0)
-                # VALUE UPDATE
-                outputs = self.model(self.rotate(batch_next_states))
-                min_output, min_index = torch.min(outputs, 0)
-                min_value = reward + pow(self.gamma, self.time_step * state.self_state.v_pref) * min_output.data.item()
-                self.action_values.append(min_value)
-                if min_value > max_min_value:
-                    max_min_value = min_value
-                    max_action = action
+            discount = pow(self.gamma, self.time_step * state.self_state.v_pref)
+
+            with torch.no_grad():
+                for action in self.action_space:
+                    next_self_state = self.propagate(state.self_state, action)
+                    ob, reward, done, info = self.env.onestep_lookahead(action)
+                    # Build tensor on CPU first, then transfer once
+                    batch_next_states = torch.cat([torch.Tensor([next_self_state + next_human_state])
+                                                  for next_human_state in ob], dim=0)
+                    batch_next_states = self.rotate(batch_next_states).to(self.device)
+                    # VALUE UPDATE
+                    outputs = self.model(batch_next_states)
+                    min_output = outputs.min().item()
+                    min_value = reward + discount * min_output
+                    self.action_values.append(min_value)
+                    if min_value > max_min_value:
+                        max_min_value = min_value
+                        max_action = action
 
         if self.phase == 'train':
             self.last_state = self.transform(state)
@@ -180,9 +185,10 @@ class CADRL(Policy):
         :return: tensor of shape (len(state), )
         """
         assert len(state.human_states) == 1
-        state = torch.Tensor(state.self_state + state.human_states[0]).to(self.device)
-        state = self.rotate(state.unsqueeze(0)).squeeze(dim=0)
-        return state
+        # Build and rotate on CPU first, then transfer once
+        state_tensor = torch.Tensor(state.self_state + state.human_states[0])
+        state_tensor = self.rotate(state_tensor.unsqueeze(0)).squeeze(dim=0).to(self.device)
+        return state_tensor
 
     def rotate(self, state):
         """

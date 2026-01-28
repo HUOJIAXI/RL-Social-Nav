@@ -1,0 +1,36 @@
+mpc_controller_node:
+  ros__parameters:
+    # Goal settings
+    goal_x: 10.0
+    goal_y: 5.0
+    goal_tolerance: 0.3  # 30cm for easier goal reaching
+
+    # MPC parameters - TUNED FOR CROWDED SCENARIOS
+    dt: 0.15              # Shorter timestep for more responsive planning
+    N: 20                 # Longer horizon (3 seconds total)
+    num_rollouts: 150     # MORE rollouts to find paths through crowds
+    control_rate_hz: 10.0
+
+    # Velocity limits
+    default_v_max: 0.6
+    omega_max: 1.2        # Increased agility for maneuvering
+
+    # Cost weights - BALANCED FOR CROWDS
+    w_smooth: 0.05        # Less smoothness = more aggressive maneuvering
+    w_obstacle: 2.5       # Slightly reduced to allow closer passing
+
+    # Obstacle avoidance - ADJUSTED FOR CROWDS
+    min_obstacle_distance: 0.4   # Slightly larger safety margin
+    min_valid_laser_range: 0.15
+    safety_check_enabled: true
+
+    # Topic configuration
+    crowd_topic: "/person_tracker/person_info"  # PersonInfoArray from 3D tracker
+
+    # Logging
+    log_mpc_to_csv: true
+    log_social_contract_to_csv: true
+    enable_debug_logging: false
+
+    # Random seed
+    random_seed: 42

@@ -18,8 +18,17 @@ def main():
     parser.add_argument('--plot_reward', default=True, action='store_true')
     parser.add_argument('--plot_train', default=True, action='store_true')
     parser.add_argument('--plot_val', default=False, action='store_true')
+    parser.add_argument('--plot_all', default=False, action='store_true', help='Plot all metrics')
     parser.add_argument('--window_size', type=int, default=200)
+    parser.add_argument('--output_dir', type=str, default=None, help='Directory to save plots (if not set, shows interactive window)')
     args = parser.parse_args()
+
+    # If plot_all is set, enable all plot types
+    if args.plot_all:
+        args.plot_sr = True
+        args.plot_cr = True
+        args.plot_time = True
+        args.plot_reward = True
 
     # define the names of the models you want to plot and the longest episodes you want to show
     models = ['LSTM-RL', 'SARL', 'OM-SARL']
@@ -140,7 +149,23 @@ def main():
             ax4.set_ylabel('Reward')
             ax4.set_title('Cumulative Discounted Reward')
 
-    plt.show()
+    if args.output_dir:
+        import os
+        os.makedirs(args.output_dir, exist_ok=True)
+        if ax1 is not None:
+            ax1.figure.savefig(os.path.join(args.output_dir, 'success_rate.png'), dpi=150)
+            print(f"Saved: {os.path.join(args.output_dir, 'success_rate.png')}")
+        if ax2 is not None:
+            ax2.figure.savefig(os.path.join(args.output_dir, 'nav_time.png'), dpi=150)
+            print(f"Saved: {os.path.join(args.output_dir, 'nav_time.png')}")
+        if ax3 is not None:
+            ax3.figure.savefig(os.path.join(args.output_dir, 'collision_rate.png'), dpi=150)
+            print(f"Saved: {os.path.join(args.output_dir, 'collision_rate.png')}")
+        if ax4 is not None:
+            ax4.figure.savefig(os.path.join(args.output_dir, 'reward.png'), dpi=150)
+            print(f"Saved: {os.path.join(args.output_dir, 'reward.png')}")
+    else:
+        plt.show()
 
 
 if __name__ == '__main__':

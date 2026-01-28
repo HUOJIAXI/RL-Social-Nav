@@ -1,0 +1,46 @@
+mpc_controller_node:
+  ros__parameters:
+    # Goal settings
+    goal_x: 10.0
+    goal_y: 5.0
+    goal_tolerance: 1  # Distance threshold to consider goal reached (meters) - 30cm for easier goal reaching
+
+    # MPC parameters
+    dt: 0.2               # Time step for MPC prediction (seconds)
+    N: 15                 # Prediction horizon steps
+    num_rollouts: 100     # Number of random trajectories to sample (increase if stuck)
+    control_rate_hz: 10.0 # Control loop frequency (Hz)
+
+    # Velocity limits
+    default_v_max: 0.6    # Maximum linear velocity (m/s)
+    omega_max: 0.9        # Maximum angular velocity (rad/s)
+
+    # Cost weights
+    w_smooth: 0.5         # Smoothness cost weight (penalizes jerky motion) - increased to reduce oscillations
+    w_obstacle: 3.0       # Obstacle avoidance cost weight
+    # Note: w_goal and w_social are managed by social_contract
+
+    # # Orientation control (new)
+    # w_terminal_orientation: 0.0      # Terminal orientation cost weight (low to prioritize position first)
+    # w_running_orientation: 0       # Running orientation cost weight (disabled - rely on terminal cost only)
+    # orientation_activation_distance: 0   # Distance (m) to start caring about orientation (very close)
+    # rotation_penalty_distance_threshold: 0  # Distance (m) below which rotation is freely allowed
+
+    # Obstacle avoidance
+    min_obstacle_distance: 0.3   # Safety threshold for obstacles (meters)
+    min_valid_laser_range: 0.25  # Ignore laser readings below this (filters robot body, meters)
+    safety_check_enabled: true   # Enable emergency stop for imminent collisions
+
+    # Topic configuration
+    # crowd_topic expects PersonInfoArray messages from the 3D person tracker
+    crowd_topic: "/person_tracker/person_info"
+
+    # Logging
+    log_mpc_to_csv: true
+    log_social_contract_to_csv: true
+
+    # Random seed for reproducibility
+    random_seed: 42
+
+    # Debug options
+    enable_debug_logging: false  # Set to true for detailed MPC debug logs (every control cycle)

@@ -1,0 +1,15 @@
+# Batch evaluation of SARL value function for MPC rollout terminal states
+# Called once per MPC control cycle with all rollout terminal states
+
+# Request: rollout terminal states + current people
+float32[] robot_states      # Flattened: [x, y, yaw, vx, vy] per rollout (5 floats each)
+float32 goal_x
+float32 goal_y
+float32[] people_states     # Flattened: [x, y, vx, vy] per person (4 floats each)
+int32 num_rollouts
+int32 num_people
+---
+# Response: V(s) per rollout terminal state
+float32[] values            # One value per rollout
+float32 inference_time_ms
+bool success

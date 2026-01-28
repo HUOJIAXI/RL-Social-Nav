@@ -1,0 +1,13 @@
+gt_localization_node:
+  ros__parameters:
+    # Robot model settings
+    robot_model_name: "tiago_base"
+
+    # TF frame names
+    map_frame: "map"
+    odom_frame: "tiago_base/odom"
+    base_link_frame: "tiago_base/base_footprint"
+    world_frame: "world"
+
+    # Topic settings
+    model_states_topic: "/gazebo/model_states"

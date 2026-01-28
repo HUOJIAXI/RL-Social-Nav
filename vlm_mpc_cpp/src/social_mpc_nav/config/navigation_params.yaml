@@ -1,0 +1,73 @@
+# Social MPC Navigation - Complete Configuration
+# This file contains all parameters for the navigation system
+
+mpc_controller_node:
+  ros__parameters:
+    # ========== Goal Settings ==========
+    goal_x: 10.0
+    goal_y: 5.0
+    goal_tolerance: 0.3  # Distance threshold to consider goal reached (meters) - 30cm for easier goal reaching
+
+    # ========== MPC Parameters ==========
+    dt: 0.2               # Time step for MPC prediction (seconds)
+    N: 15                 # Prediction horizon steps (total horizon = N * dt seconds)
+    num_rollouts: 60      # Number of random trajectories to sample per control cycle
+    control_rate_hz: 10.0 # Control loop frequency (Hz)
+
+    # ========== Velocity Limits ==========
+    default_v_max: 0.6    # Maximum linear velocity (m/s)
+    omega_max: 0.9        # Maximum angular velocity (rad/s)
+
+    # ========== Cost Weights ==========
+    w_smooth: 0.1         # Smoothness cost weight (penalizes jerky motion)
+    w_obstacle: 3.0       # Obstacle avoidance cost weight (higher = stronger avoidance)
+    # Note: w_goal and w_social are dynamically adjusted by social_contract
+
+    # ========== VLM Cost Weights (for mpc_controller_vlm_node) ==========
+    w_vlm_directional: 1.0    # Directional preference cost (side_preference: left/right)
+    w_vlm_action: 2.0         # Action-based cost (stop_and_wait, yield_to_pedestrian)
+    w_vlm_scene: 1.5          # Scene-specific cost (doorway, crossing, queue)
+    w_vlm_personal: 5.0       # Personal distance violation cost (enhanced social proximity)
+
+    # ========== Collision Avoidance ==========
+    min_obstacle_distance: 0.3   # Soft safety threshold for obstacles (meters) - used for cost penalties
+    hard_min_obstacle_distance: 0.2  # Hard safety constraint - robot CANNOT get closer than this (meters)
+    min_valid_laser_range: 0.5   # Ignore laser readings below this (filters robot body + antenna, meters)
+    safety_check_enabled: true   # Enable emergency stop for imminent collisions
+
+    # ========== Topic Configuration ==========
+    odom_topic: "/task_generator_node/tiago_base/odom"
+    cmd_vel_topic: "/task_generator_node/tiago_base/cmd_vel"
+    crowd_topic: "/person_tracker/person_info"  # PersonInfoArray from 3D tracker
+
+    # ========== Logging ==========
+    log_mpc_to_csv: true
+    log_social_contract_to_csv: true
+
+    # ========== Reproducibility ==========
+    random_seed: 42
+
+gt_localization_node:
+  ros__parameters:
+    robot_model_name: "tiago_base"
+    map_frame: "map"
+    odom_frame: "odom"
+    base_link_frame: "base_link"
+    model_states_topic: "/gazebo/model_states"
+
+crowd_state_node:
+  ros__parameters:
+    # Coordinate frames
+    world_frame: "world"  # Gazebo world frame name
+    map_frame: "map"      # Target frame for publishing (should match MPC controller)
+    odom_frame: "odom"   # Odometry frame name (used for intermediate transform if needed)
+    
+    # Person identification
+    person_name_prefix: "person"
+    
+    # Publishing settings
+    publish_topic: "/crowd/people2d"
+    publish_rate_hz: 10.0
+    
+    # Logging
+    log_crowd_to_csv: true

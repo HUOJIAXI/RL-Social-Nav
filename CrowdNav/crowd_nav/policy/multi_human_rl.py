@@ -24,36 +24,20 @@ class MultiHumanRL(CADRL):
         if self.action_space is None:
             self.build_action_space(state.self_state.v_pref)
 
-        occupancy_maps = None
         probability = np.random.random()
         if self.phase == 'train' and probability < self.epsilon:
             max_action = self.action_space[np.random.choice(len(self.action_space))]
         else:
-            self.action_values = list()
-            max_value = float('-inf')
-            max_action = None
-            for action in self.action_space:
-                next_self_state = self.propagate(state.self_state, action)
-                if self.query_env:
-                    next_human_states, reward, done, info = self.env.onestep_lookahead(action)
-                else:
-                    next_human_states = [self.propagate(human_state, ActionXY(human_state.vx, human_state.vy))
-                                       for human_state in state.human_states]
-                    reward = self.compute_reward(next_self_state, next_human_states)
-                batch_next_states = torch.cat([torch.Tensor([next_self_state + next_human_state]).to(self.device)
-                                              for next_human_state in next_human_states], dim=0)
-                rotated_batch_input = self.rotate(batch_next_states).unsqueeze(0)
-                if self.with_om:
-                    if occupancy_maps is None:
-                        occupancy_maps = self.build_occupancy_maps(next_human_states).unsqueeze(0)
-                    rotated_batch_input = torch.cat([rotated_batch_input, occupancy_maps.to(self.device)], dim=2)
-                # VALUE UPDATE
-                next_state_value = self.model(rotated_batch_input).data.item()
-                value = reward + pow(self.gamma, self.time_step * state.self_state.v_pref) * next_state_value
-                self.action_values.append(value)
-                if value > max_value:
-                    max_value = value
-                    max_action = action
+            num_humans = len(state.human_states)
+            num_actions = len(self.action_space)
+
+            if not self.query_env:
+                # Fully vectorized path - all computation on GPU
+                max_action = self._predict_vectorized(state, num_actions, num_humans)
+            else:
+                # query_env=True path - needs environment simulation per action
+                max_action = self._predict_with_env(state, num_actions, num_humans)
+
             if max_action is None:
                 raise ValueError('Value network is not well trained. ')
 
@@ -61,6 +45,195 @@ class MultiHumanRL(CADRL):
             self.last_state = self.transform(state)
 
         return max_action
+
+    def _predict_vectorized(self, state, num_actions, num_humans):
+        """Fully vectorized prediction when query_env=False - runs entirely on GPU"""
+        # Extract self state as tensor
+        self_state = state.self_state
+        # px, py, vx, vy, radius, gx, gy, v_pref, theta
+        self_state_tensor = torch.tensor([
+            self_state.px, self_state.py, self_state.vx, self_state.vy,
+            self_state.radius, self_state.gx, self_state.gy, self_state.v_pref, self_state.theta
+        ], dtype=torch.float32, device=self.device)
+
+        # Extract human states as tensor: (num_humans, 5) - px, py, vx, vy, radius
+        human_states_list = [[h.px, h.py, h.vx, h.vy, h.radius] for h in state.human_states]
+        human_states_tensor = torch.tensor(human_states_list, dtype=torch.float32, device=self.device)
+
+        # Extract actions as tensor: (num_actions, 2) for holonomic (vx, vy)
+        if self.kinematics == 'holonomic':
+            actions_tensor = torch.tensor([[a.vx, a.vy] for a in self.action_space],
+                                         dtype=torch.float32, device=self.device)
+        else:
+            actions_tensor = torch.tensor([[a.v, a.r] for a in self.action_space],
+                                         dtype=torch.float32, device=self.device)
+
+        # Compute next self states for all actions: (num_actions, 9)
+        if self.kinematics == 'holonomic':
+            next_px = self_state_tensor[0] + actions_tensor[:, 0] * self.time_step
+            next_py = self_state_tensor[1] + actions_tensor[:, 1] * self.time_step
+            next_self_states = torch.stack([
+                next_px, next_py, actions_tensor[:, 0], actions_tensor[:, 1],
+                self_state_tensor[4].expand(num_actions),  # radius
+                self_state_tensor[5].expand(num_actions),  # gx
+                self_state_tensor[6].expand(num_actions),  # gy
+                self_state_tensor[7].expand(num_actions),  # v_pref
+                self_state_tensor[8].expand(num_actions),  # theta
+            ], dim=1)
+        else:
+            next_theta = self_state_tensor[8] + actions_tensor[:, 1]
+            next_vx = actions_tensor[:, 0] * torch.cos(next_theta)
+            next_vy = actions_tensor[:, 0] * torch.sin(next_theta)
+            next_px = self_state_tensor[0] + next_vx * self.time_step
+            next_py = self_state_tensor[1] + next_vy * self.time_step
+            next_self_states = torch.stack([
+                next_px, next_py, next_vx, next_vy,
+                self_state_tensor[4].expand(num_actions),
+                self_state_tensor[5].expand(num_actions),
+                self_state_tensor[6].expand(num_actions),
+                self_state_tensor[7].expand(num_actions),
+                next_theta,
+            ], dim=1)
+
+        # Next human states (same for all actions - linear propagation)
+        # (num_humans, 5): px, py, vx, vy, radius -> next_px, next_py, vx, vy, radius
+        next_human_px = human_states_tensor[:, 0] + human_states_tensor[:, 2] * self.time_step
+        next_human_py = human_states_tensor[:, 1] + human_states_tensor[:, 3] * self.time_step
+        next_human_states = torch.stack([
+            next_human_px, next_human_py,
+            human_states_tensor[:, 2], human_states_tensor[:, 3], human_states_tensor[:, 4]
+        ], dim=1)  # (num_humans, 5)
+
+        # Build joint states: (num_actions, num_humans, 14)
+        # For each action, combine next_self_state with each next_human_state
+        # next_self_states: (num_actions, 9), next_human_states: (num_humans, 5)
+        next_self_expanded = next_self_states.unsqueeze(1).expand(-1, num_humans, -1)
+        next_human_expanded = next_human_states.unsqueeze(0).expand(num_actions, -1, -1)
+        joint_states = torch.cat([next_self_expanded, next_human_expanded], dim=2)
+
+        # Reshape for rotation: (num_actions * num_humans, 14)
+        joint_states_flat = joint_states.view(-1, 14)
+
+        # Rotate on GPU
+        rotated_states = self.rotate(joint_states_flat)
+
+        # Reshape back: (num_actions, num_humans, rotated_dim)
+        rotated_dim = rotated_states.shape[1]
+        batched_input = rotated_states.view(num_actions, num_humans, rotated_dim)
+
+        # Add occupancy maps if needed
+        if self.with_om:
+            # Build occupancy maps for the propagated human states
+            next_human_states_list = [
+                type(state.human_states[0])(
+                    next_human_states[i, 0].item(), next_human_states[i, 1].item(),
+                    next_human_states[i, 2].item(), next_human_states[i, 3].item(),
+                    next_human_states[i, 4].item()
+                ) for i in range(num_humans)
+            ]
+            occupancy_maps = self.build_occupancy_maps(next_human_states_list)
+            om_expanded = occupancy_maps.unsqueeze(0).expand(num_actions, -1, -1).to(self.device)
+            batched_input = torch.cat([batched_input, om_expanded], dim=2)
+
+        # Single forward pass
+        with torch.no_grad():
+            all_next_values = self.model(batched_input).squeeze(-1)
+
+        # Compute rewards vectorized on GPU
+        rewards = self._compute_rewards_vectorized(next_self_states, next_human_states, num_actions, num_humans)
+
+        # Final values
+        discount = pow(self.gamma, self.time_step * state.self_state.v_pref)
+        final_values = rewards + discount * all_next_values
+
+        # Find best action
+        max_idx = torch.argmax(final_values).item()
+        self.action_values = final_values.cpu().tolist()
+
+        return self.action_space[max_idx]
+
+    def _compute_rewards_vectorized(self, next_self_states, next_human_states, num_actions, num_humans):
+        """Compute rewards for all actions vectorized on GPU"""
+        # next_self_states: (num_actions, 9) - px, py, vx, vy, radius, gx, gy, v_pref, theta
+        # next_human_states: (num_humans, 5) - px, py, vx, vy, radius
+
+        nav_px = next_self_states[:, 0]  # (num_actions,)
+        nav_py = next_self_states[:, 1]
+        nav_radius = next_self_states[:, 4]
+        nav_gx = next_self_states[:, 5]
+        nav_gy = next_self_states[:, 6]
+
+        human_px = next_human_states[:, 0]  # (num_humans,)
+        human_py = next_human_states[:, 1]
+        human_radius = next_human_states[:, 4]
+
+        # Distance from robot to each human for all actions: (num_actions, num_humans)
+        dx = nav_px.unsqueeze(1) - human_px.unsqueeze(0)
+        dy = nav_py.unsqueeze(1) - human_py.unsqueeze(0)
+        dist = torch.sqrt(dx**2 + dy**2) - nav_radius.unsqueeze(1) - human_radius.unsqueeze(0)
+
+        # Minimum distance to any human for each action
+        dmin, _ = dist.min(dim=1)  # (num_actions,)
+
+        # Check collision (any dist < 0)
+        collision = (dist < 0).any(dim=1)  # (num_actions,)
+
+        # Check reaching goal
+        goal_dist = torch.sqrt((nav_px - nav_gx)**2 + (nav_py - nav_gy)**2)
+        reaching_goal = goal_dist < nav_radius
+
+        # Compute rewards
+        rewards = torch.zeros(num_actions, device=self.device)
+        rewards[collision] = -0.25
+        rewards[~collision & reaching_goal] = 1.0
+        # For non-collision, non-goal cases with dmin < 0.2
+        close_mask = ~collision & ~reaching_goal & (dmin < 0.2)
+        rewards[close_mask] = (dmin[close_mask] - 0.2) * 0.5 * self.time_step
+
+        return rewards
+
+    def _predict_with_env(self, state, num_actions, num_humans):
+        """Original path when query_env=True - requires environment simulation"""
+        all_raw_states = []
+        all_rewards = []
+        occupancy_maps = None
+
+        for action in self.action_space:
+            next_self_state = self.propagate(state.self_state, action)
+            next_human_states, reward, done, info = self.env.onestep_lookahead(action)
+
+            for next_human_state in next_human_states:
+                all_raw_states.append(next_self_state + next_human_state)
+            all_rewards.append(reward)
+
+            if self.with_om and occupancy_maps is None:
+                occupancy_maps = self.build_occupancy_maps(next_human_states)
+
+        # Convert to tensor and move to GPU once
+        all_states_tensor = torch.tensor(all_raw_states, dtype=torch.float32, device=self.device)
+
+        # Batch rotate on GPU
+        rotated_states = self.rotate(all_states_tensor)
+
+        # Reshape to (num_actions, num_humans, rotated_dim)
+        rotated_dim = rotated_states.shape[1]
+        batched_input = rotated_states.view(num_actions, num_humans, rotated_dim)
+
+        if self.with_om:
+            om_expanded = occupancy_maps.unsqueeze(0).expand(num_actions, -1, -1).to(self.device)
+            batched_input = torch.cat([batched_input, om_expanded], dim=2)
+
+        with torch.no_grad():
+            all_next_values = self.model(batched_input).squeeze(-1)
+
+        rewards_tensor = torch.tensor(all_rewards, dtype=torch.float32, device=self.device)
+        discount = pow(self.gamma, self.time_step * state.self_state.v_pref)
+        final_values = rewards_tensor + discount * all_next_values
+
+        max_idx = torch.argmax(final_values).item()
+        self.action_values = final_values.cpu().tolist()
+
+        return self.action_space[max_idx]
 
     def compute_reward(self, nav, humans):
         # collision detection
@@ -94,13 +267,14 @@ class MultiHumanRL(CADRL):
         :param state:
         :return: tensor of shape (# of humans, len(state))
         """
-        state_tensor = torch.cat([torch.Tensor([state.self_state + human_state]).to(self.device)
+        # Build tensor on CPU first, then transfer once
+        state_tensor = torch.cat([torch.Tensor([state.self_state + human_state])
                                   for human_state in state.human_states], dim=0)
         if self.with_om:
             occupancy_maps = self.build_occupancy_maps(state.human_states)
-            state_tensor = torch.cat([self.rotate(state_tensor), occupancy_maps.to(self.device)], dim=1)
+            state_tensor = torch.cat([self.rotate(state_tensor), occupancy_maps], dim=1).to(self.device)
         else:
-            state_tensor = self.rotate(state_tensor)
+            state_tensor = self.rotate(state_tensor).to(self.device)
         return state_tensor
 
     def input_dim(self):

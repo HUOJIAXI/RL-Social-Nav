@@ -1,0 +1,67 @@
+# Social MPC Navigation with SARL + VLM Integration
+# This file contains parameters for the mpc_controller_sarl_node
+
+mpc_controller_node:
+  ros__parameters:
+    # ========== Goal Settings ==========
+    goal_x: -5.0
+    goal_y: -15.0
+    goal_tolerance: 0.15  # Distance threshold to consider goal reached (meters)
+
+    # ========== MPC Parameters ==========
+    dt: 0.2               # Time step for MPC prediction (seconds)
+    N: 15                 # Prediction horizon steps (total horizon = N * dt = 3.0s)
+    num_rollouts: 100     # Number of random trajectories to sample per control cycle
+    control_rate_hz: 10.0 # Control loop frequency (Hz)
+
+    # ========== Velocity Limits ==========
+    default_v_max: 0.6    # Maximum linear velocity (m/s)
+    omega_max: 0.9        # Maximum angular velocity (rad/s)
+
+    # ========== Base Cost Weights ==========
+    w_smooth: 0.1         # Smoothness cost weight (penalizes jerky motion)
+    w_obstacle: 3.0       # Obstacle avoidance cost weight
+
+    # ========== VLM Cost Weights ==========
+    w_vlm_directional: 1.0    # Directional preference cost (side_preference: left/right)
+    w_vlm_action: 2.0         # Action-based cost (stop_and_wait, yield_to_pedestrian)
+    w_vlm_scene: 1.5          # Scene-specific cost (doorway, crossing, queue)
+    w_vlm_personal: 5.0       # Personal distance violation cost
+
+    # ========== SARL Cost Weights ==========
+    # These are base weights, further scaled by scene-dependent multipliers
+    w_sarl_attention: 1.0     # Attention-weighted social cost (replaces uniform 1/dist)
+    w_sarl_terminal: 0.5      # Terminal value cost from SARL V(s)
+
+    # ========== SARL Configuration ==========
+    sarl_staleness_sec: 0.5   # Max age of SARL data before fallback to uniform social cost
+    sarl_output_topic: "/sarl/output"
+    sarl_service_name: "/sarl/evaluate_batch"
+
+    # ========== Collision Avoidance ==========
+    min_obstacle_distance: 0.3      # Soft safety threshold for obstacles (meters)
+    hard_min_obstacle_distance: 0.2 # Hard safety constraint (meters)
+    min_valid_laser_range: 0.5      # Ignore laser readings below this (filters robot body)
+    safety_check_enabled: true      # Enable emergency stop for imminent collisions
+
+    # ========== Topic Configuration ==========
+    odom_topic: "/task_generator_node/tiago_base/odom"
+    cmd_vel_topic: "/task_generator_node/tiago_base/cmd_vel"
+    crowd_topic: "/person_tracker/person_info"
+
+    # ========== Logging ==========
+    log_mpc_to_csv: true
+    log_social_contract_to_csv: true
+    enable_debug_logging: false
+
+    # ========== Reproducibility ==========
+    random_seed: 42
+
+gt_localization_node:
+  ros__parameters:
+    robot_model_name: "tiago_base"
+    map_frame: "map"
+    odom_frame: "tiago_base/odom"
+    base_link_frame: "tiago_base/base_footprint"
+    world_frame: "world"
+    model_states_topic: "/gazebo/model_states"

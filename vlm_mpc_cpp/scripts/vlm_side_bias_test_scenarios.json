@@ -1,0 +1,186 @@
+[
+  {
+    "name": "People on LEFT - should choose RIGHT",
+    "description": "Two people standing on the left side of corridor, robot should pass right",
+    "robot_state": {
+      "linear_velocity": 0.3,
+      "angular_velocity": 0.0,
+      "goal_direction": "straight ahead",
+      "goal_distance": 15.0
+    },
+    "humans": [
+      {
+        "id": 1,
+        "distance": 4.5,
+        "position": "front-left",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      },
+      {
+        "id": 2,
+        "distance": 5.2,
+        "position": "left side",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      }
+    ],
+    "expected_side_preference": "right",
+    "rationale": "People are on the LEFT side, so robot should pass on the RIGHT"
+  },
+  {
+    "name": "People on RIGHT - should choose LEFT",
+    "description": "Two people standing on the right side of corridor, robot should pass left",
+    "robot_state": {
+      "linear_velocity": 0.3,
+      "angular_velocity": 0.0,
+      "goal_direction": "straight ahead",
+      "goal_distance": 15.0
+    },
+    "humans": [
+      {
+        "id": 1,
+        "distance": 4.5,
+        "position": "front-right",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      },
+      {
+        "id": 2,
+        "distance": 5.2,
+        "position": "right side",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      }
+    ],
+    "expected_side_preference": "left",
+    "rationale": "People are on the RIGHT side, so robot should pass on the LEFT"
+  },
+  {
+    "name": "People on BOTH sides - should choose NEUTRAL",
+    "description": "People distributed on both sides equally",
+    "robot_state": {
+      "linear_velocity": 0.3,
+      "angular_velocity": 0.0,
+      "goal_direction": "straight ahead",
+      "goal_distance": 15.0
+    },
+    "humans": [
+      {
+        "id": 1,
+        "distance": 4.5,
+        "position": "front-left",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      },
+      {
+        "id": 2,
+        "distance": 4.8,
+        "position": "front-right",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      }
+    ],
+    "expected_side_preference": "neutral",
+    "rationale": "People on both sides equally, symmetric scene"
+  },
+  {
+    "name": "Cluster LEFT, single RIGHT - should choose RIGHT",
+    "description": "Large group on left, one person on right, robot should pass right to avoid cluster",
+    "robot_state": {
+      "linear_velocity": 0.3,
+      "angular_velocity": 0.0,
+      "goal_direction": "straight ahead",
+      "goal_distance": 12.0
+    },
+    "humans": [
+      {
+        "id": 1,
+        "distance": 3.5,
+        "position": "left side",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      },
+      {
+        "id": 2,
+        "distance": 3.8,
+        "position": "front-left",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      },
+      {
+        "id": 3,
+        "distance": 4.1,
+        "position": "front-left",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      },
+      {
+        "id": 4,
+        "distance": 6.0,
+        "position": "front-right",
+        "speed": 0.0,
+        "motion": "standing",
+        "direction": "stationary"
+      }
+    ],
+    "clusters": [
+      {
+        "id": 0,
+        "size": 3,
+        "centroid": {
+          "distance": 3.8,
+          "position": "left"
+        },
+        "members": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "id": 1,
+        "size": 1,
+        "centroid": {
+          "distance": 6.0,
+          "position": "right"
+        },
+        "members": [
+          4
+        ]
+      }
+    ],
+    "expected_side_preference": "right",
+    "rationale": "Large cluster on LEFT (3 people), single person far on RIGHT - should strongly prefer RIGHT"
+  },
+  {
+    "name": "Person approaching from LEFT - should choose RIGHT",
+    "description": "One person on left approaching robot, should pass right",
+    "robot_state": {
+      "linear_velocity": 0.4,
+      "angular_velocity": 0.0,
+      "goal_direction": "straight ahead",
+      "goal_distance": 18.0
+    },
+    "humans": [
+      {
+        "id": 1,
+        "distance": 3.0,
+        "position": "front-left",
+        "speed": 1.2,
+        "motion": "walking",
+        "direction": "approaching robot"
+      }
+    ],
+    "expected_side_preference": "right",
+    "rationale": "Person is on LEFT and APPROACHING, robot should pass on RIGHT to avoid collision"
+  }
+]

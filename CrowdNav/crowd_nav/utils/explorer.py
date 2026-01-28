@@ -111,18 +111,12 @@ class Explorer(object):
                     next_state = states[i + 1]
                     gamma_bar = pow(self.gamma, self.robot.time_step * self.robot.v_pref)
                     value = reward + gamma_bar * self.target_model(next_state.unsqueeze(0)).data.item()
-            value = torch.Tensor([value]).to(self.device)
+            value = torch.Tensor([value])
 
-            # # transform state of different human_num into fixed-size tensor
-            # if len(state.size()) == 1:
-            #     human_num = 1
-            #     feature_size = state.size()[0]
-            # else:
-            #     human_num, feature_size = state.size()
-            # if human_num != 5:
-            #     padding = torch.zeros((5 - human_num, feature_size))
-            #     state = torch.cat([state, padding])
-            self.memory.push((state, value))
+            # Store CPU tensors in memory for efficient storage
+            # Move to GPU during training
+            state_cpu = state.cpu() if state.is_cuda else state
+            self.memory.push((state_cpu, value))
 
 
 def average(input_list):

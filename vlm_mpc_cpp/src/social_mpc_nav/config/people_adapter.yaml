@@ -1,0 +1,31 @@
+# DEPRECATED: This configuration file is no longer used.
+# The people_adapter_node has been removed as MPC controllers now subscribe
+# directly to /person_tracker/person_info (PersonInfoArray) from the 3D detector.
+
+# people_adapter_node:
+#   ros__parameters:
+#     # Input topic configuration
+#     # This should match the people detection topic from your system
+#     input_topic: "/task_generator_node/people"
+#
+#     # Output topic configuration
+#     # This is the topic that mpc_controller_node subscribes to
+#     output_topic: "/crowd/people2d"
+#
+#     # Frame settings
+#     map_frame: "map"
+#
+#     # Use TF for actor positions or subscribe to people topic
+#     # TF mode gets positions directly from Gazebo actor transforms
+#     use_tf_for_positions: true
+#
+#     # Logging
+#     log_people_to_csv: true
+#
+#     # FUTURE VLM INTEGRATION:
+#     # This node is the ideal place to add VLM-based enhancements:
+#     # - vlm_enabled: true
+#     # - vlm_model: "gpt-4-vision" / "claude-vision" / "llava"
+#     # - vlm_query_rate_hz: 1.0  # Lower rate for VLM queries
+#     # - vlm_constraints_topic: "/vlm/constraints"
+#     # - semantic_zones_enabled: true

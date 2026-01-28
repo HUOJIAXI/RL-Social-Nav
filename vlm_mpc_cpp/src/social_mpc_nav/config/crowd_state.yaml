@@ -1,0 +1,23 @@
+crowd_state_node:
+  ros__parameters:
+    # NOTE: This node is designed for Gazebo ground-truth model states
+    # For non-Gazebo systems, use people_adapter_node instead (see people_adapter.yaml)
+
+    # Model states topic (Gazebo-specific)
+    model_states_topic: "/gazebo/model_states"
+
+    # Coordinate frames
+    # Gazebo actors are published in world frame, we transform to map frame
+    world_frame: "world"  # Gazebo world frame name
+    map_frame: "map"      # Target frame for publishing (should match MPC controller)
+    odom_frame: "odom"   # Odometry frame name (used for intermediate transform if needed)
+
+    # Person identification
+    person_name_prefix: "person"
+
+    # Publishing settings
+    publish_topic: "/crowd/people2d"
+    publish_rate_hz: 10.0
+
+    # Logging
+    log_crowd_to_csv: true

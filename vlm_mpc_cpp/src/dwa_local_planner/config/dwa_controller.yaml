@@ -1,0 +1,52 @@
+/**:
+  ros__parameters:
+    # Goal configuration
+    goal_x: 10.0
+    goal_y: 5.0
+    goal_tolerance: 0.3  # meters
+
+    # Control loop
+    control_rate_hz: 10.0
+
+    # DWA parameters
+    dt: 0.2  # Time step for trajectory prediction (seconds)
+    predict_time: 3.0  # Total prediction horizon (seconds)
+
+    # Velocity limits (matching VLM-MPC)
+    default_v_max: 0.6  # m/s
+    omega_max: 2.0  # rad/s (increased for sharper turns)
+
+    # DWA resolution
+    v_resolution: 0.05  # Linear velocity sampling resolution (m/s)
+    w_resolution: 0.15  # Angular velocity sampling resolution (rad/s)
+
+    # Acceleration limits for dynamic window
+    acc_lim_v: 0.5  # m/s^2
+    acc_lim_w: 2.5  # rad/s^2 (increased for faster turning)
+
+    # Cost weights (matching VLM-MPC)
+    w_smooth: 0.5  # Smoothness (velocity change) penalty
+    w_obstacle: 3.0  # Obstacle avoidance weight
+    w_heading: 2.0  # Heading alignment to goal
+
+    # VLM cost weights (matching VLM-MPC)
+    w_vlm_directional: 1.0  # Corridor side preference
+    w_vlm_action: 2.0  # Action-based penalties (stop_and_wait, yield)
+    w_vlm_scene: 1.5  # Scene-specific penalties (doorway, crossing)
+    w_vlm_personal: 5.0  # Personal distance violation
+
+    # Obstacle avoidance parameters (matching VLM-MPC)
+    min_obstacle_distance: 0.3  # Soft constraint threshold (m)
+    hard_min_obstacle_distance: 0.05  # Hard constraint - reject trajectory (m)
+    min_valid_laser_range: 0.15  # Minimum valid laser reading (m)
+    safety_check_enabled: true  # Emergency stop for imminent collisions
+
+    # Topics
+    odom_topic: "/task_generator_node/tiago_base/odom"
+    crowd_topic: "/person_tracker/person_info"
+
+    # Logging
+    log_directory: "~/ros2_logs/dwa_local_planner"
+    log_to_csv: true
+    log_social_contract_to_csv: true
+    enable_debug_logging: false

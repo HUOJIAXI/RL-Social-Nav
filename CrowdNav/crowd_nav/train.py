@@ -107,11 +107,11 @@ def main():
     if args.resume:
         if not os.path.exists(rl_weight_file):
             logging.error('RL weights does not exist')
-        model.load_state_dict(torch.load(rl_weight_file))
+        model.load_state_dict(torch.load(rl_weight_file, map_location=device))
         rl_weight_file = os.path.join(args.output_dir, 'resumed_rl_model.pth')
         logging.info('Load reinforcement learning trained weights. Resume training')
     elif os.path.exists(il_weight_file):
-        model.load_state_dict(torch.load(il_weight_file))
+        model.load_state_dict(torch.load(il_weight_file, map_location=device))
         logging.info('Load imitation learning trained weights.')
     else:
         il_episodes = train_config.getint('imitation_learning', 'il_episodes')

@@ -1,0 +1,92 @@
+# Social MPC Navigation - Jackal Robot Configuration
+# This file contains all parameters for the navigation system adapted for Jackal robot
+
+mpc_controller_node:
+  ros__parameters:
+    # ========== Goal Settings ==========
+    goal_x: 10.0
+    goal_y: 5.0
+    goal_tolerance: 0.3  # Distance threshold to consider goal reached (meters) - 30cm for easier goal reaching
+
+    # ========== MPC Parameters ==========
+    dt: 0.2               # Time step for MPC prediction (seconds)
+    N: 15                 # Prediction horizon steps (total horizon = N * dt seconds)
+    num_rollouts: 80      # Number of random trajectories to sample per control cycle
+    control_rate_hz: 10.0 # Control loop frequency (Hz)
+
+    # ========== Velocity Limits ==========
+    # Jackal is faster and more agile than TIAGo
+    default_v_max: 0.8    # Maximum linear velocity (m/s) - Jackal can go faster
+    omega_max: 1.5        # Maximum angular velocity (rad/s) - Jackal has better turning
+
+    # ========== Cost Weights ==========
+    w_smooth: 0.3         # Smoothness cost weight (penalizes jerky motion)
+    w_obstacle: 3.0       # Obstacle avoidance cost weight (higher = stronger avoidance)
+    # Note: w_goal and w_social are dynamically adjusted by social_contract
+
+    # ========== Collision Avoidance ==========
+    min_obstacle_distance: 0.25  # Safety threshold for obstacles (meters) - Jackal is smaller
+    min_valid_laser_range: 0.15  # Ignore laser readings below this (filters robot body, meters)
+    safety_check_enabled: true   # Enable emergency stop for imminent collisions
+
+    # ========== Topic Configuration - Jackal Specific ==========
+    odom_topic: "/task_generator_node/jackal/odom"
+    cmd_vel_topic: "/task_generator_node/jackal/cmd_vel"
+    scan_topic: "/task_generator_node/jackal/lidar"  # Jackal already has LaserScan
+    crowd_topic: "/person_tracker/person_info"  # PersonInfoArray from 3D tracker
+    global_path_topic: "/global_path"
+
+    # ========== Frame Configuration - Jackal Specific ==========
+    map_frame: "map"
+    odom_frame: "jackal/odom"
+    base_link_frame: "jackal/base_link"
+
+    # ========== Logging ==========
+    log_mpc_to_csv: true
+    log_social_contract_to_csv: true
+    log_directory: "~/ros2_logs/social_mpc_nav_jackal"
+
+    # ========== Reproducibility ==========
+    random_seed: 42
+
+    # ========== Debug Options ==========
+    enable_debug_logging: false  # Set to true for detailed MPC debug logs (every control cycle)
+
+global_planner_node:
+  ros__parameters:
+    # ========== Goal Settings ==========
+    goal_x: 10.0
+    goal_y: 5.0
+
+    # ========== Planning Parameters ==========
+    waypoint_spacing: 1.0      # Distance between waypoints (meters)
+    planning_rate_hz: 1.0      # Replanning frequency (Hz)
+
+    # ========== Topic Configuration - Jackal Specific ==========
+    odom_topic: "/task_generator_node/jackal/odom"
+    map_topic: "/task_generator_node/map"
+    global_path_topic: "/global_path"
+
+    # ========== Frame Configuration - Jackal Specific ==========
+    map_frame: "map"
+    odom_frame: "jackal/odom"
+
+    # ========== Logging ==========
+    log_directory: "~/ros2_logs/social_mpc_nav_jackal"
+
+# DEPRECATED: people_adapter_node is no longer used
+# MPC controllers now subscribe directly to /person_tracker/person_info
+# people_adapter_node:
+#   ros__parameters:
+#     # ========== Topic Configuration ==========
+#     people_input_topic: "/task_generator_node/people"
+#     people_output_topic: "/crowd/people2d"
+
+#     # ========== Frame Configuration ==========
+#     target_frame: "map"
+#
+#     # ========== Filtering ==========
+#     min_confidence: 0.5  # Minimum detection confidence
+#
+#     # ========== Logging ==========
+#     log_directory: "~/ros2_logs/social_mpc_nav_jackal"

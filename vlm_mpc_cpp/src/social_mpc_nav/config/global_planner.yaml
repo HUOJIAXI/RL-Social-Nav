@@ -1,0 +1,29 @@
+global_planner_node:
+  ros__parameters:
+    # TF frame names
+    map_frame: "map"
+    base_link_frame: "tiago_base/base_footprint"
+
+    # Goal settings (will be overridden by launch file)
+    goal_x: 10.0
+    goal_y: 5.0
+
+    # Planning parameters
+    waypoint_spacing: 1.0              # Distance between waypoints (meters)
+    replan_distance_threshold: 0.5     # Replan if deviated by this distance
+    planning_enabled: true             # Enable/disable planning
+
+    # Planner type
+    use_simple_line_planner: false     # true: straight line, false: A* with obstacle avoidance
+
+    # A* planner parameters
+    occupancy_threshold: 50            # Cells >= this value are considered occupied (0-100)
+    treat_unknown_as_free: true        # Treat unknown cells (-1) as free space
+    inflation_radius: 0.5              # Inflate obstacles by this radius (meters) for safer paths
+
+    # Path optimization parameters
+    enable_shortcut_optimization: true # Remove unnecessary waypoints using line-of-sight
+    enable_path_smoothing: true        # Smooth path to reduce sharp corners
+    smoothing_iterations: 50           # Number of smoothing iterations (more = smoother)
+    smoothing_weight_data: 0.5         # Weight for staying close to original path (0-1)
+    smoothing_weight_smooth: 0.3       # Weight for smoothness (0-1)

@@ -1,0 +1,87 @@
+vlm_integration_node:
+  ros__parameters:
+    # Topic configuration
+    bounding_boxes_topic: "/darknet_ros_3d/bounding_boxes"
+    person_info_topic: "/person_tracker/person_info"  # Person motion tracking data
+    odom_topic: "/task_generator_node/tiago_official/odom"
+    rgb_image_topic: "/task_generator_node/tiago_official/top_camera/image"  # RGB image for VLM
+    vlm_prompt_topic: "/vlm/prompt"
+    vlm_response_topic: "/vlm/response"
+
+    # Event trigger configuration
+    # Trigger VLM call when new bounding box is detected
+    trigger_on_new_detection: true
+    
+    # Trigger VLM call periodically (even if no new detection)
+    trigger_periodic: false
+    periodic_interval_sec: 5.0
+    
+    # Trigger VLM call when robot moves significantly (scene change)
+    trigger_on_scene_change: true
+    scene_change_threshold: 0.3  # meters - robot movement threshold
+
+    # Advanced trigger conditions for significant scene changes
+    # These conditions help identify when the environment has changed meaningfully
+    
+    # Trigger when a new object type appears or disappears
+    trigger_on_new_object_type: true  # e.g., person appears, car disappears
+    
+    # Trigger when object count changes significantly
+    trigger_on_object_count_change: false  # Set to true if you want to trigger on count changes
+    object_count_change_threshold: 2  # Minimum change in object count to trigger
+    
+    # Trigger when objects move significantly (position change)
+    trigger_on_object_position_change: true  # Detect when objects move
+    object_position_change_threshold: 1.0  # meters - minimum movement distance to trigger
+    
+    # Trigger when object type combination changes
+    # e.g., from [person, person] to [person, car] even if count is same
+    trigger_on_object_type_combination_change: true
+
+    # Detection filtering
+    min_confidence: 0.5  # Minimum detection confidence (0.0-1.0)
+    max_detection_distance: 10.0  # meters - ignore detections beyond this distance
+    
+    # Heartbeat to keep topic visible
+    heartbeat_interval_sec: 5.0  # seconds - publish heartbeat message periodically
+
+    # VLM API configuration
+    # Set enable_vlm_call to true when VLM API is ready
+    enable_vlm_call: true  # Set to true to enable actual VLM API calls
+
+    # VLM API endpoint (examples):
+    # - OpenAI: "https://api.openai.com/v1/chat/completions"
+    # - Local Ollama server: "http://localhost:11434/v1/chat/completions"
+    # - Local server: "http://localhost:8000/v1/chat/completions"
+    # - Claude: "https://api.anthropic.com/v1/messages"
+    # vlm_api_url: "http://localhost:11434/v1/chat/completions"
+    # vlm_api_url: "http://192.168.30.10:8000/v1/chat/completions"
+    # vlm_api_url: "http://192.168.30.60:11434/v1/chat/completions"
+    # vlm_model: "qwen3-vl:2b-instruct-q4_K_M"
+    vlm_api_url: "http://localhost:8000/v1/chat/completions"
+    vlm_model: "Qwen/Qwen3-VL-4B-Instruct-FP8"
+    # vlm_model: "Qwen/Qwen3-VL-8B-Instruct"  # Vision-capable model (llava, llava:13b, llava:34b, etc.)
+    # vlm_model: "qwen3-vl:2b-instruct"
+    vlm_api_key: ""  # Not required for local Ollama server
+
+    # Image encoding parameters
+    image_resize_width: 640   # Resize image width before encoding (0 = no resize)
+    image_resize_height: 480  # Resize image height before encoding (0 = no resize)
+    jpeg_quality: 85          # JPEG compression quality (1-100)
+
+    # VLM heartbeat parameters - keeps model warm when idle
+    # Sends a simple "ping" prompt to prevent model from going to sleep
+    enable_vlm_heartbeat: true       # Enable heartbeat to keep VLM model warm
+    vlm_heartbeat_interval_sec: 1.0  # Check interval for sending heartbeat (1 second)
+    vlm_idle_threshold_sec: 5.0      # Send heartbeat if model idle longer than this
+
+    # Frame configuration
+    map_frame: "map"
+    odom_frame: "tiago_official/odom"
+    robot_base_frame: "tiago_official/base_link"
+
+    # Navigation goal (fallback if no global path available)
+    # The node will use the next waypoint from /global_path if available,
+    # otherwise falls back to these configured values
+    goal_x: 10.0
+    goal_y: 5.0

@@ -1,0 +1,310 @@
+
+You are an expert ROS2 Humble and Gazebo Harmonic C++ developer.
+Help me implement the **minimal viable version** of a **social MPC navigation stack**
+for a **TIAGo robot with a differential drive base** in Gazebo.
+
+The goal is to build a small but complete research prototype that:
+1. Uses Gazebo ground-truth for robot and people (no VLM, no YOLO, no SLAM for now).
+2. Builds a simple rule-based “social contract” from the crowd state.
+3. Runs a Model Predictive Controller (MPC) that drives the robot to a fixed goal
+   while avoiding people in a social way.
+4. Logs all important states (robot, people, contract, controls, costs) for later analysis.
+
+Assumptions and environment:
+- ROS 2 **Humble** on Ubuntu.
+- Gazebo **Harmonic** is already running with a TIAGo robot model in a world.
+- TIAGo base is controlled via `/cmd_vel` (geometry_msgs/msg/Twist).
+- Gazebo publishes model poses and velocities (e.g. via `/gazebo/model_states` or equivalent).
+- The robot is treated as a 2D **unicycle / differential drive**:
+  state x = [px, py, yaw], control u = [v, omega].
+
+======================================================================
+HIGH-LEVEL ARCHITECTURE
+======================================================================
+
+Please generate a ROS2 package called **`social_mpc_nav`** with these components:
+
+1. Package & build setup:
+   - `package.xml`
+   - `CMakeLists.txt`
+   The package must:
+   - Use C++17.
+   - Build with `ament_cmake`.
+   - Depend on:
+     - `rclcpp`
+     - `geometry_msgs`
+     - `nav_msgs`
+     - `tf2`
+     - `tf2_ros`
+     - `gazebo_msgs` (or the correct Gazebo interface for model states in Humble)
+     - `std_msgs`
+     - `builtin_interfaces`
+   - Export and install executables for:
+     - `gt_localization_node`
+     - `crowd_state_node`
+     - `mpc_controller_node`
+   - Install custom messages and launch files properly.
+
+2. Custom messages for crowd state (2D):
+   - Create a `msg/Person2D.msg`:
+       string name
+       float32 x
+       float32 y
+       float32 vx
+       float32 vy
+   - Create a `msg/People2D.msg`:
+       builtin_interfaces/Time stamp
+       Person2D[] people
+
+   These messages describe people in the **map** frame.
+
+======================================================================
+NODE 1: gt_localization_node (Ground-truth localization)
+======================================================================
+
+Purpose:
+- Provide **perfect localization** from Gazebo ground-truth (no SLAM).
+- Publish Odometry and TF frames.
+
+Behavior:
+- Subscribe to the Gazebo model states topic:
+  - For ROS2 Humble + Gazebo Harmonic, pick the correct topic and message type
+    (often `/gazebo/model_states` with `gazebo_msgs/msg/ModelStates` or similar).
+  - If there is ambiguity, choose one and document the assumption in comments.
+- Parameters:
+  - `robot_model_name` (string, e.g. "tiago" or "tiago_front").
+  - `map_frame` (default: "map").
+  - `odom_frame` (default: "odom").
+  - `base_link_frame` (default: "base_link").
+
+Function:
+- Find the pose and twist of the TIAGo base model in model states.
+- Publish:
+  - `nav_msgs::msg::Odometry` on `/odom`.
+  - A TF transform:
+      map -> base_link
+    using `tf2_ros::TransformBroadcaster`.
+- Make sure time stamps come from the ROS2 clock and are consistent.
+
+Logging:
+- Use `RCLCPP_INFO_THROTTLE` or similar to periodically print:
+  - Robot pose (x, y, yaw).
+  - Robot linear and angular velocity.
+- This logging is just console logs, not file logs.
+
+======================================================================
+NODE 2: crowd_state_node (Crowd state from Gazebo ground truth)
+======================================================================
+
+Purpose:
+- Extract the positions and velocities of people in the simulation from Gazebo.
+- Publish as `People2D` messages.
+- Additionally, write simple log files for offline analysis.
+
+Behavior:
+- Subscribe to the same Gazebo model states topic as `gt_localization_node`.
+- Parameters:
+  - `person_name_prefix` (default: "person").
+  - `map_frame` (default: "map").
+  - `publish_topic` (default: "/crowd/people2d").
+  - `log_directory` (default: something like `~/ros2_logs/social_mpc_nav`).
+  - `log_crowd_to_csv` (bool, default: true).
+
+People extraction:
+- For each model in the ModelStates message:
+  - If `name` contains `person_name_prefix`, treat it as a person.
+  - Extract pose (x, y) in the map frame.
+  - Compute velocity (vx, vy) via finite differences across timesteps:
+      vx = (x_t - x_{t-1}) / dt
+      vy = (y_t - y_{t-1}) / dt
+- Fill a `People2D` message:
+  - `stamp` = current ROS time.
+  - `people` array with entries for each detected person.
+
+Publishing:
+- Publish `People2D` at a configurable rate (e.g. 10 Hz), using a timer.
+
+Logging (to file):
+- Implement a simple CSV logger:
+  - File path: `<log_directory>/crowd_state.csv`.
+  - Each row: time, person_name, x, y, vx, vy.
+- Create the directory and file if they do not exist.
+- Append new rows at each publish step.
+- Make sure logging is efficient and not blocking the main thread too much (e.g., minimal file I/O per tick).
+
+======================================================================
+SOCIAL CONTRACT (RULE-BASED, NO VLM)
+======================================================================
+
+Implement a **C++ helper class** or functions used inside the MPC controller
+that builds a simple “social contract” based on the current robot state and
+the `People2D` message.
+
+Input:
+- Robot pose: (x, y, yaw).
+- People list: `People2D`.
+- Goal position: (goal_x, goal_y) (configured via ROS2 parameters).
+
+Output: a C++ struct, e.g. `SocialContract`:
+- `double v_max;`        // max linear velocity for this step
+- `double w_goal;`       // MPC weight for goal tracking
+- `double w_social;`     // MPC weight for social distance
+- Optionally: `double min_person_distance;` and `bool person_in_front;`
+
+Rules (example, feel free to implement cleanly in C++):
+- Compute the distance from the robot to each person.
+- Compute a boolean: `person_in_front`:
+  - Person is in front if the vector (person - robot) has a positive dot
+    product with the robot’s heading direction.
+- If any person is in front within 2.0 meters:
+  - Set `v_max` small, e.g. 0.2 m/s.
+- Otherwise:
+  - Set `v_max` to a default higher value, e.g. 0.6 m/s.
+- Look at the minimum distance `d_min` to any person:
+  - If `d_min < 1.0`: set `w_social = 5.0`, `w_goal = 1.0`.
+  - Else if `d_min < 2.0`: `w_social = 2.5`, `w_goal = 1.5`.
+  - Else: `w_social = 1.0`, `w_goal = 2.0`.
+
+Logging of the contract:
+- Each control cycle, log (to both console and CSV text file):
+  - current time
+  - v_max
+  - w_goal
+  - w_social
+  - min_person_distance
+  - person_in_front (0/1)
+- Write this to a CSV file, e.g. `<log_directory>/social_contract.csv`.
+
+======================================================================
+NODE 3: mpc_controller_node (Social MPC controller)
+======================================================================
+
+Purpose:
+- Implement a discrete-time MPC controller for a unicycle model.
+- Use the rule-based social contract to modulate speed and social cost.
+- Drive the TIAGo base towards a fixed goal while avoiding people.
+
+Subscriptions:
+- `/odom` (nav_msgs/msg/Odometry) from `gt_localization_node`.
+- `/crowd/people2d` (People2D) from `crowd_state_node`.
+
+Publishing:
+- `/cmd_vel` (geometry_msgs/msg/Twist).
+
+Parameters:
+- `goal_x`, `goal_y` (double).
+- `control_rate_hz` (e.g. 10.0 or 20.0).
+- MPC parameters:
+  - `dt` (time step, e.g. 0.2 s).
+  - `N` (horizon length, e.g. 15).
+  - `default_v_max`, `omega_max`.
+  - Weights: default values for goal, social, smoothness if contract not available.
+- `log_directory` (same convention as above).
+- `log_mpc_to_csv` (bool, default: true).
+
+Dynamics model:
+- State `x = [px, py, yaw]`.
+- Control `u = [v, omega]`.
+
+Discrete-time update:
+- px_{k+1}  = px_k + v_k * cos(yaw_k) * dt
+- py_{k+1}  = py_k + v_k * sin(yaw_k) * dt
+- yaw_{k+1} = yaw_k + omega_k * dt
+
+Cost function (minimal version is OK, but please structure the code cleanly):
+
+1. Terminal goal cost:
+   J_goal = w_goal * || p_N - p_goal ||^2
+
+2. Social cost:
+   For each step k, for each person p:
+   - distance d_kp = distance between predicted (px_k, py_k) and (x_p, y_p)
+   - Add: w_social * 1 / (d_kp + eps)
+   (You may cap this term to avoid exploding values.)
+
+3. Smoothness cost:
+   Penalize control variation:
+   J_smooth = sum_k || u_k - u_{k-1} ||^2
+
+Total:
+   J = J_goal + J_social + J_smooth
+
+Constraints:
+- 0 <= v_k <= v_max (from social contract; if contract not available, use default_v_max).
+- |omega_k| <= omega_max.
+
+Implementation details:
+- For the **first minimal version**, it is acceptable to implement a simple
+  optimization method:
+  - Either use a small QP/NLP solver (OSQP, if convenient), OR
+  - Implement a simple iterative approach (e.g., gradient-free search) for demonstration.
+- The key is clean structure and clear hooks where I can later replace
+  the solver with a more advanced one (e.g. CasADi, Ceres, etc.).
+
+Control loop:
+- Use a ROS2 timer at `control_rate_hz`.
+- Each tick:
+  1. Read latest robot state from `/odom`.
+  2. Read latest crowd state from `/crowd/people2d`.
+  3. Compute `SocialContract` from the helper.
+  4. Run MPC to compute the optimal control sequence (or an approximation).
+  5. Apply only the first control input u_0 = [v, omega].
+  6. Publish `/cmd_vel`.
+  7. Log data.
+
+Logging for MPC:
+- For each control step, log (to CSV):
+  - time
+  - robot pose (px, py, yaw)
+  - goal (goal_x, goal_y)
+  - command (v, omega)
+  - v_max, w_goal, w_social
+  - min distance to people
+  - number of people
+  - (optionally) predicted terminal distance to goal or cost value
+- Save to `<log_directory>/mpc_log.csv`.
+
+======================================================================
+LAUNCH FILE
+======================================================================
+
+Create `launch/social_mpc_demo.launch.py` that:
+
+- Launches:
+  - `gt_localization_node`
+  - `crowd_state_node`
+  - `mpc_controller_node`
+- Exposes useful parameters via launch arguments:
+  - `robot_model_name`
+  - `goal_x`, `goal_y`
+  - `person_name_prefix`
+  - `log_directory`
+  - MPC parameters (`dt`, `N`, `control_rate_hz`).
+
+Assume that:
+- Gazebo and TIAGo world are launched separately.
+- TF frame names and robot model name can be overridden via parameters.
+
+======================================================================
+CODING STYLE & OUTPUT
+======================================================================
+
+Please generate:
+
+1. `package.xml` and `CMakeLists.txt` with correct dependencies and build rules.
+2. Full source files for:
+   - `src/gt_localization_node.cpp`
+   - `src/crowd_state_node.cpp`
+   - `src/mpc_controller_node.cpp`
+   - Message definitions:
+     - `msg/Person2D.msg`
+     - `msg/People2D.msg`
+   - `launch/social_mpc_demo.launch.py`
+3. Use modern C++ (C++17), `rclcpp::Node` subclasses, and consistent namespaces.
+4. Add clear comments explaining:
+   - What each node does.
+   - What each parameter controls.
+   - Where I should modify or extend the code in the future (e.g. replacing solver, adding VLM, replacing GT with YOLO, etc.).
+5. If any ROS2 Humble or Gazebo Harmonic specifics are needed, explain them in comments.
+
+If anything is ambiguous, make reasonable assumptions, document them, and then implement.

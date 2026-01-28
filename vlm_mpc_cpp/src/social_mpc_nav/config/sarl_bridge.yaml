@@ -1,0 +1,29 @@
+# SARL Bridge Node Configuration
+# Loads trained SARL model and publishes attention weights + V(s)
+
+sarl_bridge_node:
+  ros__parameters:
+    # Path to trained SARL model weights
+    model_path: "/home/car/RL/CrowdNav/crowd_nav/data/output/rl_model.pth"
+
+    # Inference rate (Hz) for topic publisher
+    rate_hz: 10.0
+
+    # Robot physical parameters (must match Gazebo model)
+    robot_radius: 0.3       # TIAGo base radius (meters)
+    robot_v_pref: 0.6       # Preferred speed (m/s), should match MPC default_v_max
+
+    # Human parameters
+    human_default_radius: 0.3  # Default pedestrian radius (meters)
+
+    # Topic configuration
+    odom_topic: "/task_generator_node/tiago_base/odom"
+    crowd_topic: "/person_tracker/person_info"
+    output_topic: "/sarl/output"
+
+    # Service configuration
+    service_name: "/sarl/evaluate_batch"
+
+    # Navigation goal (updated at runtime via launch args)
+    goal_x: -5.0
+    goal_y: -15.0

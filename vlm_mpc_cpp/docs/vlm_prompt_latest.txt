@@ -1,0 +1,7 @@
+data: 'You are a social navigation advisor for a mobile robot.
+
+
+  The robot has a forward-facing RGB-D camera. You are given:
+
+  1) The curr...'
+---

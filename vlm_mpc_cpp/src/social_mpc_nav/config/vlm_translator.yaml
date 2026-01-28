@@ -1,0 +1,38 @@
+vlm_translator_node:
+  ros__parameters:
+    # Topics
+    vlm_response_topic: "/vlm/response"
+    vlm_parameters_topic: "/vlm/mpc_parameters"
+    translator_status_topic: "/vlm/translator_status"
+    visualization_topic: "/vlm/visualization_markers"
+    odom_topic: "/task_generator_node/tiago_base/odom"
+
+    # TF Frames
+    map_frame: "map"
+    odom_frame: "tiago_base/odom"
+
+    # Fallback
+    vlm_timeout_threshold_sec: 5.0
+    cache_expiry_sec: 30.0
+    use_cached_fallback: true
+
+    # Validation ranges
+    min_speed_scale: 0.0
+    max_speed_scale: 1.0
+    min_personal_distance: 0.5
+    max_personal_distance: 2.0
+
+    # Monitoring
+    status_publish_rate_hz: 1.0
+    visualization_rate_hz: 2.0
+    timeout_check_rate_hz: 1.0
+
+    # Logging
+    log_directory: "~/ros2_logs/social_mpc_nav"
+    log_translation_to_csv: true
+    enable_debug_logging: false
+
+    # Safe fallback defaults
+    fallback_speed_scale: 1.0
+    fallback_personal_distance: 1.0
+    fallback_side_preference: "neutral"
