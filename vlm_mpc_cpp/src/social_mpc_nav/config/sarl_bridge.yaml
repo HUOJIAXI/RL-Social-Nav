@@ -3,8 +3,9 @@
 
 sarl_bridge_node:
   ros__parameters:
-    # Path to trained SARL model weights
-    model_path: "/home/car/RL/CrowdNav/crowd_nav/data/output/rl_model.pth"
+    # Path to trained SARL model weights (overridden by launch file;
+    # default is derived relative to workspace: <repo>/CrowdNav/crowd_nav/data/output/rl_model.pth)
+    model_path: ""
 
     # Inference rate (Hz) for topic publisher
     rate_hz: 10.0

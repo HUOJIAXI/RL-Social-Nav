@@ -41,9 +41,14 @@ def generate_launch_description():
     # Get the package directory
     pkg_dir = get_package_share_directory('social_mpc_nav')
 
-    # RViz config file (relative path from workspace root)
+    # Workspace root (vlm_mpc_cpp/) derived from installed package share dir
     workspace_dir = os.path.abspath(os.path.join(pkg_dir, '..', '..', '..', '..'))
     rviz_config_file = os.path.join(workspace_dir, 'rviz_config', 'mpc.rviz')
+
+    # SARL model path (relative to repo root, one level above workspace)
+    repo_dir = os.path.abspath(os.path.join(workspace_dir, '..'))
+    default_sarl_model_path = os.path.join(
+        repo_dir, 'CrowdNav', 'crowd_nav', 'data', 'output', 'rl_model.pth')
 
     # Default config file paths
     default_global_planner_config = os.path.join(
@@ -124,7 +129,7 @@ def generate_launch_description():
     # SARL bridge
     sarl_model_path_arg = DeclareLaunchArgument(
         'sarl_model_path',
-        default_value='/home/car/RL/CrowdNav/crowd_nav/data/output/rl_model.pth',
+        default_value=default_sarl_model_path,
         description='Path to trained SARL model weights')
     sarl_rate_hz_arg = DeclareLaunchArgument(
         'sarl_rate_hz', default_value='10.0',

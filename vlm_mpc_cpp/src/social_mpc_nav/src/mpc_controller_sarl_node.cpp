@@ -147,6 +147,11 @@ public:
       "/vlm/mpc_parameters", rclcpp::QoS(10),
       std::bind(&MPCControllerNode::onVLMParameters, this, std::placeholders::_1));
 
+    // Goal pose subscription (from RViz2 "2D Goal Pose" tool)
+    goal_pose_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
+      "/goal_pose", 10,
+      std::bind(&MPCControllerNode::onGoalPose, this, std::placeholders::_1));
+
     // SARL attention subscription
     sarl_sub_ = create_subscription<social_mpc_nav::msg::SARLOutput>(
       sarl_output_topic_, rclcpp::QoS(10),
@@ -179,10 +184,23 @@ public:
     map_frame_ = declare_parameter<std::string>("map_frame", "map");
     odom_frame_ = declare_parameter<std::string>("odom_frame", "odom");
 
+    // VLM master control
+    enable_vlm_ = declare_parameter<bool>("enable_vlm", false);
+
     RCLCPP_INFO(
       get_logger(),
       "mpc_controller_node (SARL) started. Goal: (%.2f, %.2f) dt=%.2f N=%d rollouts=%d",
       goal_x_, goal_y_, dt_, horizon_steps_, num_rollouts_);
+    RCLCPP_INFO(get_logger(), "VLM integration: %s",
+      enable_vlm_ ? "ENABLED" : "DISABLED (using default/user-defined parameters)");
+
+    // VLM warmup requirement
+    if (enable_vlm_) {
+      vlm_ready_ = false;  // Must wait for VLM warmup
+      RCLCPP_INFO(get_logger(), "VLM warmup required - waiting for first valid VLM response before navigation...");
+    } else {
+      vlm_ready_ = true;   // VLM disabled, no warmup needed
+    }
   }
 
   /**
@@ -260,9 +278,50 @@ private:
     std::lock_guard<std::mutex> lock(vlm_params_mutex_);
     latest_vlm_params_ = msg;
 
+    // Check if VLM is warmed up and ready (received valid VLM output, not fallback)
+    if (enable_vlm_ && !vlm_ready_ && msg->source == "vlm") {
+      vlm_ready_ = true;
+      RCLCPP_INFO(get_logger(),
+        "VLM WARMED UP and READY! Received first valid VLM response (confidence: %.2f, scene: %s)",
+        msg->confidence, msg->scene_type.c_str());
+    }
+
     RCLCPP_DEBUG(get_logger(),
                  "Received VLM parameters: speed_scale=%.2f, min_dist=%.2f, source=%s",
                  msg->speed_scale, msg->min_personal_distance, msg->source.c_str());
+  }
+
+  void onGoalPose(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+  {
+    std::lock_guard<std::mutex> lock(data_mutex_);
+
+    // Transform goal pose to map frame if needed
+    geometry_msgs::msg::PoseStamped goal_in_map;
+    try {
+      if (msg->header.frame_id.empty() || msg->header.frame_id == map_frame_) {
+        goal_in_map = *msg;
+      } else {
+        tf_buffer_->transform(*msg, goal_in_map, map_frame_, tf2::durationFromSec(0.1));
+      }
+
+      // Update goal position
+      goal_x_ = goal_in_map.pose.position.x;
+      goal_y_ = goal_in_map.pose.position.y;
+
+      // Reset goal reached flag to allow navigation to new goal
+      goal_reached_ = false;
+
+      // Enable navigation now that we have a goal from RViz2
+      goal_received_ = true;
+
+      RCLCPP_INFO(get_logger(),
+                  "New goal received from RViz2: (%.2f, %.2f) in %s frame - Starting navigation",
+                  goal_x_, goal_y_, map_frame_.c_str());
+    } catch (const tf2::TransformException& ex) {
+      RCLCPP_WARN(get_logger(),
+                  "Failed to transform goal pose from %s to %s: %s",
+                  msg->header.frame_id.c_str(), map_frame_.c_str(), ex.what());
+    }
   }
 
   void onSARLOutput(const social_mpc_nav::msg::SARLOutput::SharedPtr msg)
@@ -340,6 +399,20 @@ private:
     if (!getLatestData(robot, people, scan))
     {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "Waiting for odom...");
+      return;
+    }
+
+    // Wait for goal from RViz2 before starting navigation
+    if (!goal_received_) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Waiting for goal from RViz2 (use 2D Goal Pose tool)...");
+      return;
+    }
+
+    // Wait for VLM warmup before starting navigation (only if VLM enabled)
+    if (enable_vlm_ && !vlm_ready_) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Waiting for VLM warmup... (waiting for first valid VLM response)");
       return;
     }
 
@@ -727,7 +800,7 @@ private:
   void publishNavigationExplanation(const SocialContract & contract)
   {
     auto explanation = social_mpc_nav::msg::NavigationExplanation();
-    explanation.stamp = now().to_msg();
+    explanation.stamp = builtin_interfaces::msg::Time(now());
 
     // Fill VLM fields
     {
@@ -1601,6 +1674,7 @@ private:
   double goal_y_{0.0};
   double goal_tolerance_{0.3};  // 30cm position tolerance for goal reaching
   bool goal_reached_{false};
+  bool goal_received_{false};  // Flag to prevent navigation until goal is set via RViz2
   double control_rate_hz_{10.0};
   double dt_{0.2};
   int horizon_steps_{15};
@@ -1638,6 +1712,7 @@ private:
   rclcpp::Subscription<person_tracker::msg::PersonInfoArray>::SharedPtr crowd_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_sub_;
   rclcpp::TimerBase::SharedPtr control_timer_;
 
   // TF2 for coordinate frame transformations
@@ -1665,6 +1740,9 @@ private:
   rclcpp::Subscription<social_mpc_nav::msg::VLMParameters>::SharedPtr vlm_params_sub_;
   social_mpc_nav::msg::VLMParameters::SharedPtr latest_vlm_params_;
   std::mutex vlm_params_mutex_;
+
+  bool enable_vlm_{false};   // Master VLM control
+  bool vlm_ready_{false};    // Flag to prevent navigation until VLM is warmed up (only if VLM enabled)
 
   // VLM cost weights
   double w_vlm_directional_;

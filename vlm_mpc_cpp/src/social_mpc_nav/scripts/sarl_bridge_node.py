@@ -15,6 +15,9 @@ import os
 import time
 import math
 import numpy as np
+# Patch for NumPy >= 1.24 compatibility with transforms3d
+if not hasattr(np, 'float'):
+    np.float = float
 import torch
 import torch.nn as nn
 
@@ -236,13 +239,13 @@ class SARLBridgeNode(Node):
         self.declare_parameter('robot_v_pref', 1.0)
         self.declare_parameter('human_default_radius', 0.3)
         self.declare_parameter('odom_topic',
-                               '/task_generator_node/tiago_official/odom')
+                               '/task_generator_node/tiago_base/odom')
         self.declare_parameter('crowd_topic',
                                '/person_tracker/person_info')
         self.declare_parameter('output_topic', '/sarl/output')
         self.declare_parameter('service_name', '/sarl/evaluate_batch')
-        self.declare_parameter('goal_x', 10.0)
-        self.declare_parameter('goal_y', 5.0)
+        self.declare_parameter('goal_x', 0.0)
+        self.declare_parameter('goal_y', 0.0)
         self.declare_parameter('marker_topic', '/sarl/attention_markers')
         self.declare_parameter('map_frame', 'map')
 
