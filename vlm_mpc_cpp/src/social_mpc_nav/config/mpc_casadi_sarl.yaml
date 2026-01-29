@@ -1,0 +1,64 @@
+# CasADi-based Social MPC Navigation with SARL Attention + VLM Integration
+# Parameters for mpc_controller_casadi_sarl_node
+# Uses CasADi/IPOPT optimization with SARL attention-weighted social costs (Option 3)
+
+mpc_controller_casadi_sarl_node:
+  ros__parameters:
+    # ========== Goal Settings ==========
+    goal_x: -5.0
+    goal_y: -15.0
+    goal_tolerance: 0.15
+
+    # ========== MPC Parameters ==========
+    dt: 0.2
+    N: 15
+    control_rate_hz: 10.0
+
+    # ========== Velocity Limits ==========
+    default_v_max: 0.6
+    omega_max: 0.9
+
+    # ========== Base Cost Weights ==========
+    w_goal: 20.0
+    w_smooth: 0.1
+    w_obstacle: 3.0
+
+    # ========== VLM Cost Weights ==========
+    w_vlm_directional: 1.0
+    w_vlm_action: 2.0
+    w_vlm_scene: 1.5
+    w_vlm_personal: 5.0
+
+    # ========== SARL Cost Weights ==========
+    # Attention-weighted social cost weight (scales per-person inverse-distance cost)
+    # Higher = stronger avoidance of SARL-attended people
+    w_sarl_attention: 1.0
+
+    # ========== SARL Configuration ==========
+    sarl_staleness_sec: 0.5
+    sarl_output_topic: "/sarl/output"
+
+    # ========== Collision Avoidance ==========
+    min_obstacle_distance: 0.3
+    hard_min_obstacle_distance: 0.2
+    min_valid_laser_range: 0.5
+    min_person_safety_distance: 0.5
+
+    # ========== Topic Configuration ==========
+    odom_topic: "/task_generator_node/tiago_base/odom"
+    cmd_vel_topic: "/task_generator_node/tiago_base/cmd_vel"
+    crowd_topic: "/person_tracker/person_info"
+
+    # ========== Logging ==========
+    log_mpc_to_csv: true
+    log_social_contract_to_csv: true
+    enable_debug_logging: false
+
+gt_localization_node:
+  ros__parameters:
+    robot_model_name: "tiago_base"
+    map_frame: "map"
+    odom_frame: "tiago_base/odom"
+    base_link_frame: "tiago_base/base_footprint"
+    world_frame: "world"
+    model_states_topic: "/gazebo/model_states"

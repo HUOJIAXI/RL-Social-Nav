@@ -206,6 +206,36 @@ set_target_properties(mpc_controller_casadi_node PROPERTIES
 rosidl_target_interfaces(mpc_controller_casadi_node
   ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
+# CasADi-based MPC controller with SARL attention-weighted social costs
+add_executable(mpc_controller_casadi_sarl_node src/mpc_controller_casadi_sarl_node.cpp)
+ament_target_dependencies(mpc_controller_casadi_sarl_node
+  rclcpp
+  geometry_msgs
+  nav_msgs
+  sensor_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  std_msgs
+  visualization_msgs
+  person_tracker
+)
+target_include_directories(mpc_controller_casadi_sarl_node PRIVATE
+  ${CASADI_INCLUDE_DIR}
+  ${PROJECT_SOURCE_DIR}/include
+)
+target_link_directories(mpc_controller_casadi_sarl_node PRIVATE ${CASADI_LIBRARY_DIR})
+target_link_libraries(mpc_controller_casadi_sarl_node
+  social_contract_helper
+  casadi
+)
+set_target_properties(mpc_controller_casadi_sarl_node PROPERTIES
+  INSTALL_RPATH "${CASADI_LIBRARY_DIR}"
+  BUILD_RPATH "${CASADI_LIBRARY_DIR}"
+)
+rosidl_target_interfaces(mpc_controller_casadi_sarl_node
+  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
 add_executable(vlm_integration_node src/vlm_integration_node.cpp)
 ament_target_dependencies(vlm_integration_node
   rclcpp
@@ -256,6 +286,7 @@ install(TARGETS
   mpc_controller_vlm_node
   mpc_controller_sarl_node
   mpc_controller_casadi_node
+  mpc_controller_casadi_sarl_node
   vlm_integration_node
   vlm_translator_node
   DESTINATION lib/${PROJECT_NAME})
