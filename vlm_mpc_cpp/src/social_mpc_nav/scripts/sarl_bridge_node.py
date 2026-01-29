@@ -249,6 +249,13 @@ class SARLBridgeNode(Node):
         self.declare_parameter('marker_topic', '/sarl/attention_markers')
         self.declare_parameter('map_frame', 'map')
 
+        # Action selection parameters (Enhancement C)
+        self.declare_parameter('enable_action_selection', True)
+        self.declare_parameter('action_speed_samples', 5)
+        self.declare_parameter('action_rotation_samples', 16)
+        self.declare_parameter('action_time_step', 0.25)
+        self.declare_parameter('action_gamma', 0.9)
+
         model_path = self.get_parameter('model_path').value
         rate_hz = self.get_parameter('rate_hz').value
         self.robot_radius = self.get_parameter('robot_radius').value
@@ -263,9 +270,30 @@ class SARLBridgeNode(Node):
         marker_topic = self.get_parameter('marker_topic').value
         self.map_frame = self.get_parameter('map_frame').value
 
+        # Action selection config
+        self.enable_action_selection = \
+            self.get_parameter('enable_action_selection').value
+        self.action_speed_samples = \
+            self.get_parameter('action_speed_samples').value
+        self.action_rotation_samples = \
+            self.get_parameter('action_rotation_samples').value
+        self.action_time_step = \
+            self.get_parameter('action_time_step').value
+        self.action_gamma = self.get_parameter('action_gamma').value
+
         # Load SARL model
         self.model = self._load_model(model_path)
         self.get_logger().info(f'SARL model loaded from: {model_path}')
+
+        # Build action space for SARL action selection
+        if self.enable_action_selection:
+            self.action_space = self._build_action_space()
+            self.get_logger().info(
+                f'Action selection ENABLED: {len(self.action_space)} candidates '
+                f'({self.action_speed_samples} speeds x '
+                f'{self.action_rotation_samples} rotations + stop)')
+        else:
+            self.action_space = None
 
         # State storage
         self.latest_odom = None
@@ -331,6 +359,121 @@ class SARLBridgeNode(Node):
 
         model.eval()
         return model
+
+    # --- Action selection (Enhancement C) ---
+
+    def _build_action_space(self):
+        """Build action candidates matching CrowdNav cadrl.py:build_action_space()."""
+        v_pref = self.robot_v_pref
+        n_speed = self.action_speed_samples
+        n_rot = self.action_rotation_samples
+
+        speeds = [
+            (math.exp((i + 1) / n_speed) - 1) / (math.e - 1) * v_pref
+            for i in range(n_speed)
+        ]
+        rotations = np.linspace(0, 2 * math.pi, n_rot, endpoint=False)
+
+        actions = [(0.0, 0.0)]  # stop action
+        for rot in rotations:
+            for spd in speeds:
+                actions.append(
+                    (spd * math.cos(rot), spd * math.sin(rot)))
+        return actions
+
+    def _select_best_action(self, robot_state, human_states):
+        """
+        Replicate SARL action selection from CrowdNav multi_human_rl.py.
+
+        For each candidate action, propagate robot one step (holonomic),
+        propagate humans linearly, evaluate V(s'), compute Q = reward + gamma * V(s').
+        Returns best action as (vx, vy) in world frame, or None.
+        """
+        if not human_states or self.action_space is None:
+            return None
+
+        dt = self.action_time_step
+        discount = pow(self.action_gamma,
+                       dt * robot_state['v_pref'])
+
+        # Pre-compute next human states (linear propagation, same for all actions)
+        next_humans = []
+        for h in human_states:
+            next_humans.append({
+                'px': h['px'] + h['vx'] * dt,
+                'py': h['py'] + h['vy'] * dt,
+                'vx': h['vx'],
+                'vy': h['vy'],
+                'radius': h.get('radius', self.human_radius),
+            })
+
+        # Build all next robot states for batched evaluation
+        next_robot_states = []
+        for vx, vy in self.action_space:
+            next_robot_states.append({
+                'px': robot_state['px'] + vx * dt,
+                'py': robot_state['py'] + vy * dt,
+                'vx': vx,
+                'vy': vy,
+            })
+
+        # Batch tensor: (num_actions, num_humans, 13)
+        batch_tensor = build_batch_rotated_tensor(
+            next_robot_states, next_humans,
+            robot_state['gx'], robot_state['gy'],
+            robot_state['radius'], robot_state['v_pref'],
+            self.human_radius)
+        if batch_tensor is None:
+            return None
+
+        with torch.no_grad():
+            values = self.model(batch_tensor)  # (num_actions, 1)
+
+        values = values.squeeze(1)  # (num_actions,)
+
+        # Compute rewards and Q-values (matching CrowdNav reward structure)
+        best_q = float('-inf')
+        best_action = None
+
+        for i, (vx, vy) in enumerate(self.action_space):
+            next_px = next_robot_states[i]['px']
+            next_py = next_robot_states[i]['py']
+
+            # Check collision with any human
+            dmin = float('inf')
+            collision = False
+            for nh in next_humans:
+                dist = math.sqrt(
+                    (next_px - nh['px']) ** 2
+                    + (next_py - nh['py']) ** 2)
+                dist -= robot_state['radius'] + nh['radius']
+                if dist < 0:
+                    collision = True
+                    break
+                dmin = min(dmin, dist)
+
+            # Check reaching goal
+            goal_dist = math.sqrt(
+                (next_px - robot_state['gx']) ** 2
+                + (next_py - robot_state['gy']) ** 2)
+            reaching_goal = goal_dist < robot_state['radius']
+
+            # Reward (matching CrowdNav multi_human_rl.py)
+            if collision:
+                reward = -0.25
+            elif reaching_goal:
+                reward = 1.0
+            elif dmin < 0.2:
+                reward = (dmin - 0.2) * 0.5 * dt
+            else:
+                reward = 0.0
+
+            q = reward + discount * values[i].item()
+            if q > best_q:
+                best_q = q
+                best_action = (vx, vy)
+
+        return best_action
 
     # --- Subscriber callbacks ---
 
@@ -398,6 +541,18 @@ class SARLBridgeNode(Node):
         with torch.no_grad():
             value = self.model(state_tensor)
 
+        # Action selection (Enhancement C)
+        recommended_vx = 0.0
+        recommended_vy = 0.0
+        has_recommended_action = False
+
+        if self.enable_action_selection and len(self.latest_people) > 0:
+            best_action = self._select_best_action(
+                robot_state, self.latest_people)
+            if best_action is not None:
+                recommended_vx, recommended_vy = best_action
+                has_recommended_action = True
+
         elapsed_ms = (time.monotonic() - t0) * 1000.0
 
         # Build output message
@@ -409,6 +564,16 @@ class SARLBridgeNode(Node):
         msg.robot_x = float(odom['px'])
         msg.robot_y = float(odom['py'])
         msg.robot_yaw = float(odom['yaw'])
+
+        # Recommended action fields
+        msg.recommended_vx = float(recommended_vx)
+        msg.recommended_vy = float(recommended_vy)
+        msg.recommended_speed = float(math.sqrt(
+            recommended_vx ** 2 + recommended_vy ** 2))
+        msg.recommended_heading = float(math.atan2(
+            recommended_vy, recommended_vx))
+        msg.has_recommended_action = has_recommended_action
+
         msg.inference_time_ms = float(elapsed_ms)
         msg.is_valid = True
 
@@ -417,16 +582,20 @@ class SARLBridgeNode(Node):
         # Publish RViz markers
         self._publish_attention_markers(
             self.latest_people, self.model.attention_weights,
-            float(value.item()))
+            float(value.item()),
+            recommended_vx, recommended_vy, has_recommended_action)
 
     # --- RViz visualization ---
 
-    def _publish_attention_markers(self, people, attention_weights, state_value):
+    def _publish_attention_markers(self, people, attention_weights, state_value,
+                                    rec_vx=0.0, rec_vy=0.0,
+                                    has_rec_action=False):
         """
         Publish per-person colored sphere markers + text labels for RViz.
 
         Color gradient: green (low attention) -> yellow -> red (high attention).
         Sphere size scales with attention weight.
+        Also publishes SARL recommended action arrow when available.
         """
         marker_array = MarkerArray()
         now = self.get_clock().now().to_msg()
@@ -499,6 +668,69 @@ class SARLBridgeNode(Node):
             value_text.lifetime.sec = 0
             value_text.lifetime.nanosec = 200000000
             marker_array.markers.append(value_text)
+
+        # SARL recommended action arrow
+        if has_rec_action and self.latest_odom is not None:
+            speed = math.sqrt(rec_vx ** 2 + rec_vy ** 2)
+            if speed > 0.01:
+                heading = math.atan2(rec_vy, rec_vx)
+                rx = float(self.latest_odom['px'])
+                ry = float(self.latest_odom['py'])
+
+                # Arrow marker showing recommended velocity direction
+                arrow = Marker()
+                arrow.header.frame_id = self.map_frame
+                arrow.header.stamp = now
+                arrow.ns = 'sarl_action_arrow'
+                arrow.id = 0
+                arrow.type = Marker.ARROW
+                arrow.action = Marker.ADD
+                # Start at robot, end at robot + direction * scale
+                arrow_len = min(speed * 2.0, 2.0)  # cap at 2m
+                from geometry_msgs.msg import Point
+                p_start = Point()
+                p_start.x = rx
+                p_start.y = ry
+                p_start.z = 0.5
+                p_end = Point()
+                p_end.x = rx + arrow_len * math.cos(heading)
+                p_end.y = ry + arrow_len * math.sin(heading)
+                p_end.z = 0.5
+                arrow.points = [p_start, p_end]
+                arrow.scale.x = 0.08  # shaft diameter
+                arrow.scale.y = 0.15  # head diameter
+                arrow.scale.z = 0.15  # head length
+                # Cyan color
+                arrow.color.r = 0.0
+                arrow.color.g = 0.9
+                arrow.color.b = 1.0
+                arrow.color.a = 0.9
+                arrow.lifetime.sec = 0
+                arrow.lifetime.nanosec = 200000000
+                marker_array.markers.append(arrow)
+
+                # Text label for recommended action
+                action_text = Marker()
+                action_text.header.frame_id = self.map_frame
+                action_text.header.stamp = now
+                action_text.ns = 'sarl_action_text'
+                action_text.id = 0
+                action_text.type = Marker.TEXT_VIEW_FACING
+                action_text.action = Marker.ADD
+                action_text.pose.position.x = rx
+                action_text.pose.position.y = ry
+                action_text.pose.position.z = 3.0  # above V(s) text
+                action_text.scale.z = 0.22
+                action_text.color.r = 0.0
+                action_text.color.g = 0.9
+                action_text.color.b = 1.0
+                action_text.color.a = 1.0
+                action_text.text = (
+                    f"SARL act: {speed:.2f}m/s "
+                    f"hdg={math.degrees(heading):.0f}deg")
+                action_text.lifetime.sec = 0
+                action_text.lifetime.nanosec = 200000000
+                marker_array.markers.append(action_text)
 
         self.marker_pub.publish(marker_array)
 

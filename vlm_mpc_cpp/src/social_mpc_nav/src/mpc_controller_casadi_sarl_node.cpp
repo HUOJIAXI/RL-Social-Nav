@@ -6,7 +6,8 @@
  * - Replaces uniform 1/distance social cost with attention-weighted per-person cost
  * - Scene-dependent multipliers from VLM condition SARL cost weights
  * - Publishes NavigationExplanation merging VLM + SARL interpretability
- * - No terminal V(s) service call (attention weights only, Option 3)
+ * - Terminal V(s) via linear approximation (finite-difference gradient from batch service)
+ * - SARL recommended action as soft reference velocity
  *
  * Hard constraints (collision avoidance, velocity limits) remain via IPOPT.
  */
@@ -29,8 +30,11 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
+#include "geometry_msgs/msg/point.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include "visualization_msgs/msg/marker.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 #include "tf2/utils.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2_ros/buffer.h"
@@ -44,6 +48,9 @@
 #include "social_mpc_nav/social_contract.hpp"
 #include "social_mpc_nav/mpc_vlm_helpers.hpp"
 #include "social_mpc_nav/sarl_helpers.hpp"
+#include "social_mpc_nav/srv/evaluate_sarl_batch.hpp"
+
+#include <future>
 
 using namespace casadi;
 
@@ -130,6 +137,17 @@ public:
     sarl_staleness_sec_ = declare_parameter<double>("sarl_staleness_sec", 0.5);
     sarl_output_topic_ = declare_parameter<std::string>("sarl_output_topic", "/sarl/output");
 
+    // Enhancement A: Terminal V(s) linearization
+    w_sarl_terminal_ = declare_parameter<double>("w_sarl_terminal", 2.0);
+    sarl_terminal_delta_ = declare_parameter<double>("sarl_terminal_delta", 0.3);
+    sarl_service_name_ = declare_parameter<std::string>("sarl_service_name", "/sarl/evaluate_batch");
+
+    // Enhancement C: SARL recommended action reference
+    w_sarl_ref_speed_ = declare_parameter<double>("w_sarl_ref_speed", 0.5);
+    w_sarl_ref_heading_ = declare_parameter<double>("w_sarl_ref_heading", 1.0);
+    sarl_ref_horizon_ = declare_parameter<int>("sarl_ref_horizon", 3);
+    sarl_ref_decay_rate_ = declare_parameter<double>("sarl_ref_decay_rate", 0.5);
+
     min_obstacle_distance_ = declare_parameter<double>("min_obstacle_distance", 0.3);
     hard_min_obstacle_distance_ = declare_parameter<double>("hard_min_obstacle_distance", 0.05);
     min_valid_laser_range_ = declare_parameter<double>("min_valid_laser_range", 0.5);
@@ -159,6 +177,8 @@ public:
     cmd_vel_pub_ = create_publisher<geometry_msgs::msg::Twist>(cmd_vel_topic_, 10);
     explanation_pub_ = create_publisher<social_mpc_nav::msg::NavigationExplanation>(
       "/navigation/explanation", rclcpp::QoS(10));
+    sarl_mpc_marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+      "/sarl/mpc_markers", rclcpp::QoS(10));
 
     people_sub_ = create_subscription<person_tracker::msg::PersonInfoArray>(
       crowd_topic_, 10,
@@ -185,6 +205,9 @@ public:
     sarl_sub_ = create_subscription<social_mpc_nav::msg::SARLOutput>(
       sarl_output_topic_, rclcpp::QoS(10),
       std::bind(&MPCControllerCasADiSARLNode::onSARLOutput, this, std::placeholders::_1));
+
+    // SARL batch evaluation service client (Enhancement A)
+    sarl_client_ = create_client<social_mpc_nav::srv::EvaluateSARLBatch>(sarl_service_name_);
 
     // TF2
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
@@ -217,6 +240,10 @@ public:
                 w_sarl_attention_);
     RCLCPP_INFO(get_logger(), "SARL topic: %s (staleness threshold: %.1fs)",
                 sarl_output_topic_.c_str(), sarl_staleness_sec_);
+    RCLCPP_INFO(get_logger(), "SARL terminal V(s): w=%.2f, delta=%.2fm, service=%s",
+                w_sarl_terminal_, sarl_terminal_delta_, sarl_service_name_.c_str());
+    RCLCPP_INFO(get_logger(), "SARL action ref: w_speed=%.2f, w_heading=%.2f, horizon=%d, decay=%.2f",
+                w_sarl_ref_speed_, w_sarl_ref_heading_, sarl_ref_horizon_, sarl_ref_decay_rate_);
     RCLCPP_INFO(get_logger(), "VLM integration: %s", enable_vlm_ ? "ENABLED" : "DISABLED");
 
     // VLM warmup requirement
@@ -285,6 +312,21 @@ private:
     attn_weights_param_ = opti_.parameter(max_people_);
     scene_mult_param_ = opti_.parameter();
 
+    // Enhancement A: Terminal V(s) linearization parameters
+    terminal_v_grad_x_param_ = opti_.parameter();
+    terminal_v_grad_y_param_ = opti_.parameter();
+    terminal_ref_x_param_ = opti_.parameter();
+    terminal_ref_y_param_ = opti_.parameter();
+    terminal_v_base_param_ = opti_.parameter();
+    scene_mult_terminal_param_ = opti_.parameter();
+    w_sarl_terminal_param_ = opti_.parameter();
+
+    // Enhancement C: SARL action reference parameters
+    sarl_ref_speed_param_ = opti_.parameter();
+    sarl_ref_heading_param_ = opti_.parameter();
+    w_sarl_ref_speed_param_ = opti_.parameter();
+    w_sarl_ref_heading_param_ = opti_.parameter();
+
     // ===== BUILD OPTIMIZATION PROBLEM (ONCE!) =====
 
     MX x = x0_param_;
@@ -334,6 +376,18 @@ private:
       if (k > 0) {
         cost = cost + w_smooth_ * (pow(v_var_(k) - v_var_(k-1), 2) +
                                     pow(w_var_(k) - w_var_(k-1), 2));
+      }
+
+      // ===== Enhancement C: SARL ACTION REFERENCE COST =====
+      // Apply to first K steps with exponential decay
+      if (k < sarl_ref_horizon_) {
+        double decay = std::exp(-k * sarl_ref_decay_rate_);
+        // Speed reference: penalize deviation from SARL's recommended speed
+        MX speed_error = v_var_(k) - sarl_ref_speed_param_;
+        cost = cost + w_sarl_ref_speed_param_ * decay * speed_error * speed_error;
+        // Heading reference: (1 - cos) is smooth, wrapping-free, zero when aligned
+        MX heading_error_cost = 1.0 - cos(yaw - sarl_ref_heading_param_);
+        cost = cost + w_sarl_ref_heading_param_ * decay * heading_error_cost;
       }
 
       // ===== SARL ATTENTION-WEIGHTED SOCIAL COST =====
@@ -409,6 +463,14 @@ private:
     MX dy_final = y - goal_y_param_;
     cost = cost + w_goal_param_ * (dx_final * dx_final + dy_final * dy_final);
 
+    // ===== Enhancement A: Terminal V(s) cost via linear approximation =====
+    // V(s_terminal) ≈ V_base + dV/dx * (x_N - x_ref) + dV/dy * (y_N - y_ref)
+    // Higher V(s) = better social state, so negate for minimization
+    MX terminal_v_linear = terminal_v_base_param_
+        + terminal_v_grad_x_param_ * (x - terminal_ref_x_param_)
+        + terminal_v_grad_y_param_ * (y - terminal_ref_y_param_);
+    cost = cost - w_sarl_terminal_param_ * scene_mult_terminal_param_ * terminal_v_linear;
+
     // Soft acceleration penalties
     double w_accel = 0.5;
     cost = cost + w_accel * pow(v_var_(0) - prev_v_param_, 2);
@@ -478,7 +540,9 @@ private:
       log_stream_ << "timestamp,x,y,yaw,v_cmd,w_cmd,goal_dist,solve_time_ms,cost,"
                   << "safety_verified,min_obs_dist,min_person_dist,"
                   << "total_checks,total_violations,violation_rate,"
-                  << "sarl_active,scene_mult,max_attention\n";
+                  << "sarl_active,scene_mult,max_attention,"
+                  << "terminal_v_valid,terminal_v_base,terminal_grad_mag,"
+                  << "sarl_ref_valid,sarl_ref_speed,sarl_ref_heading\n";
       RCLCPP_INFO(get_logger(), "CasADi+SARL MPC logging to: %s", log_file.c_str());
     }
   }
@@ -595,6 +659,196 @@ private:
   }
 
   /**
+   * @brief Publish SARL MPC visualization markers to /sarl/mpc_markers
+   *
+   * Visualizes:
+   * - Terminal V(s) gradient arrow at predicted terminal state (purple)
+   * - Predicted terminal state sphere (magenta)
+   * - SARL reference heading arrow at robot (cyan)
+   * - MPC actual command arrow at robot (green)
+   * - Integration info text
+   */
+  void publishSARLMPCMarkers(const geometry_msgs::msg::Twist & cmd)
+  {
+    visualization_msgs::msg::MarkerArray markers;
+    auto stamp = now();
+    int id = 0;
+
+    double rx = current_robot_x_;
+    double ry = current_robot_y_;
+    double ryaw = current_robot_yaw_;
+
+    // --- Marker 1: SARL reference heading arrow (cyan) ---
+    if (sarl_ref_valid_log_) {
+      visualization_msgs::msg::Marker ref_arrow;
+      ref_arrow.header.frame_id = map_frame_;
+      ref_arrow.header.stamp = stamp;
+      ref_arrow.ns = "sarl_ref_heading";
+      ref_arrow.id = id++;
+      ref_arrow.type = visualization_msgs::msg::Marker::ARROW;
+      ref_arrow.action = visualization_msgs::msg::Marker::ADD;
+
+      double arrow_len = std::min(sarl_ref_speed_log_ * 2.0, 2.0);
+      geometry_msgs::msg::Point p_start, p_end;
+      p_start.x = rx;
+      p_start.y = ry;
+      p_start.z = 0.3;
+      p_end.x = rx + arrow_len * std::cos(sarl_ref_heading_log_);
+      p_end.y = ry + arrow_len * std::sin(sarl_ref_heading_log_);
+      p_end.z = 0.3;
+      ref_arrow.points.push_back(p_start);
+      ref_arrow.points.push_back(p_end);
+
+      ref_arrow.scale.x = 0.06;  // shaft diameter
+      ref_arrow.scale.y = 0.12;  // head diameter
+      ref_arrow.scale.z = 0.12;  // head length
+      ref_arrow.color.r = 0.0;
+      ref_arrow.color.g = 0.8;
+      ref_arrow.color.b = 1.0;
+      ref_arrow.color.a = 0.8;
+      ref_arrow.lifetime.sec = 0;
+      ref_arrow.lifetime.nanosec = 200000000;
+      markers.markers.push_back(ref_arrow);
+    }
+
+    // --- Marker 2: MPC actual command arrow (green) ---
+    {
+      double cmd_speed = cmd.linear.x;
+      if (cmd_speed > 0.02) {
+        visualization_msgs::msg::Marker cmd_arrow;
+        cmd_arrow.header.frame_id = map_frame_;
+        cmd_arrow.header.stamp = stamp;
+        cmd_arrow.ns = "mpc_cmd_arrow";
+        cmd_arrow.id = id++;
+        cmd_arrow.type = visualization_msgs::msg::Marker::ARROW;
+        cmd_arrow.action = visualization_msgs::msg::Marker::ADD;
+
+        double arrow_len = std::min(cmd_speed * 2.0, 2.0);
+        geometry_msgs::msg::Point p_start, p_end;
+        p_start.x = rx;
+        p_start.y = ry;
+        p_start.z = 0.4;
+        p_end.x = rx + arrow_len * std::cos(ryaw);
+        p_end.y = ry + arrow_len * std::sin(ryaw);
+        p_end.z = 0.4;
+        cmd_arrow.points.push_back(p_start);
+        cmd_arrow.points.push_back(p_end);
+
+        cmd_arrow.scale.x = 0.06;
+        cmd_arrow.scale.y = 0.12;
+        cmd_arrow.scale.z = 0.12;
+        cmd_arrow.color.r = 0.2;
+        cmd_arrow.color.g = 1.0;
+        cmd_arrow.color.b = 0.2;
+        cmd_arrow.color.a = 0.8;
+        cmd_arrow.lifetime.sec = 0;
+        cmd_arrow.lifetime.nanosec = 200000000;
+        markers.markers.push_back(cmd_arrow);
+      }
+    }
+
+    // --- Marker 3: Terminal state sphere (magenta) ---
+    if (terminal_v_valid_log_ && has_previous_solution_ && !prev_v_sol_.empty()) {
+      // Propagate to terminal state
+      double tx = rx, ty = ry, tyaw = ryaw;
+      for (size_t k = 0; k < prev_v_sol_.size(); ++k) {
+        tx += prev_v_sol_[k] * std::cos(tyaw) * dt_;
+        ty += prev_v_sol_[k] * std::sin(tyaw) * dt_;
+        tyaw += prev_w_sol_[k] * dt_;
+      }
+
+      visualization_msgs::msg::Marker term_sphere;
+      term_sphere.header.frame_id = map_frame_;
+      term_sphere.header.stamp = stamp;
+      term_sphere.ns = "terminal_state";
+      term_sphere.id = id++;
+      term_sphere.type = visualization_msgs::msg::Marker::SPHERE;
+      term_sphere.action = visualization_msgs::msg::Marker::ADD;
+      term_sphere.pose.position.x = tx;
+      term_sphere.pose.position.y = ty;
+      term_sphere.pose.position.z = 0.3;
+      term_sphere.pose.orientation.w = 1.0;
+      term_sphere.scale.x = 0.25;
+      term_sphere.scale.y = 0.25;
+      term_sphere.scale.z = 0.25;
+      // Magenta
+      term_sphere.color.r = 0.9;
+      term_sphere.color.g = 0.2;
+      term_sphere.color.b = 0.9;
+      term_sphere.color.a = 0.7;
+      term_sphere.lifetime.sec = 0;
+      term_sphere.lifetime.nanosec = 200000000;
+      markers.markers.push_back(term_sphere);
+
+      // --- Marker 4: Terminal V(s) gradient arrow (purple) ---
+      double grad_mag = std::hypot(terminal_grad_x_log_, terminal_grad_y_log_);
+      if (grad_mag > 0.01) {
+        visualization_msgs::msg::Marker grad_arrow;
+        grad_arrow.header.frame_id = map_frame_;
+        grad_arrow.header.stamp = stamp;
+        grad_arrow.ns = "terminal_v_gradient";
+        grad_arrow.id = id++;
+        grad_arrow.type = visualization_msgs::msg::Marker::ARROW;
+        grad_arrow.action = visualization_msgs::msg::Marker::ADD;
+
+        // Normalize and scale for visibility
+        double scale = std::min(grad_mag * 2.0, 1.5);
+        double gx_n = terminal_grad_x_log_ / grad_mag;
+        double gy_n = terminal_grad_y_log_ / grad_mag;
+
+        geometry_msgs::msg::Point p_start, p_end;
+        p_start.x = tx;
+        p_start.y = ty;
+        p_start.z = 0.5;
+        p_end.x = tx + gx_n * scale;
+        p_end.y = ty + gy_n * scale;
+        p_end.z = 0.5;
+        grad_arrow.points.push_back(p_start);
+        grad_arrow.points.push_back(p_end);
+
+        grad_arrow.scale.x = 0.05;
+        grad_arrow.scale.y = 0.10;
+        grad_arrow.scale.z = 0.10;
+        // Purple
+        grad_arrow.color.r = 0.7;
+        grad_arrow.color.g = 0.0;
+        grad_arrow.color.b = 1.0;
+        grad_arrow.color.a = 0.9;
+        grad_arrow.lifetime.sec = 0;
+        grad_arrow.lifetime.nanosec = 200000000;
+        markers.markers.push_back(grad_arrow);
+      }
+
+      // --- Marker 5: Terminal V(s) info text ---
+      visualization_msgs::msg::Marker term_text;
+      term_text.header.frame_id = map_frame_;
+      term_text.header.stamp = stamp;
+      term_text.ns = "terminal_v_info";
+      term_text.id = id++;
+      term_text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      term_text.action = visualization_msgs::msg::Marker::ADD;
+      term_text.pose.position.x = tx;
+      term_text.pose.position.y = ty;
+      term_text.pose.position.z = 0.8;
+      term_text.scale.z = 0.18;
+      term_text.color.r = 0.9;
+      term_text.color.g = 0.6;
+      term_text.color.b = 1.0;
+      term_text.color.a = 1.0;
+      std::ostringstream oss;
+      oss << std::fixed << std::setprecision(3)
+          << "V(s_N)=" << terminal_v_base_log_
+          << " |grad|=" << grad_mag;
+      term_text.text = oss.str();
+      term_text.lifetime.sec = 0;
+      term_text.lifetime.nanosec = 200000000;
+      markers.markers.push_back(term_text);
+    }
+
+    sarl_mpc_marker_pub_->publish(markers);
+  }
+
+  /**
    * @brief Publish NavigationExplanation merging VLM + SARL interpretability
    */
   void publishNavigationExplanation(const social_mpc_nav::SocialContract & contract)
@@ -697,6 +951,18 @@ private:
     } else {
       oss << " | SARL: inactive (fallback to uniform social cost)";
     }
+    // Enhancement A: Terminal V(s) info
+    if (terminal_v_valid_log_) {
+      oss << " | TermV: base=" << terminal_v_base_log_
+          << ", grad=(" << terminal_grad_x_log_ << "," << terminal_grad_y_log_ << ")";
+    }
+
+    // Enhancement C: SARL action reference info
+    if (sarl_ref_valid_log_) {
+      oss << " | SARLref: spd=" << sarl_ref_speed_log_
+          << ", hdg=" << sarl_ref_heading_log_;
+    }
+
     oss << " | Action: " << explanation.recommended_action
         << " | v_max=" << contract.v_max
         << " | Solver: CasADi/IPOPT";
@@ -951,6 +1217,9 @@ private:
     // Publish navigation explanation
     publishNavigationExplanation(contract);
 
+    // Publish SARL MPC visualization markers
+    publishSARLMPCMarkers(cmd);
+
     // Store previous command
     prev_v_cmd_ = cmd.linear.x;
     prev_w_cmd_ = cmd.angular.z;
@@ -986,7 +1255,13 @@ private:
                   << violation_rate << ","
                   << (current_sarl_active_ ? 1 : 0) << ","
                   << current_scene_mult_ << ","
-                  << max_attn << "\n";
+                  << max_attn << ","
+                  << (terminal_v_valid_log_ ? 1 : 0) << ","
+                  << terminal_v_base_log_ << ","
+                  << std::hypot(terminal_grad_x_log_, terminal_grad_y_log_) << ","
+                  << (sarl_ref_valid_log_ ? 1 : 0) << ","
+                  << sarl_ref_speed_log_ << ","
+                  << sarl_ref_heading_log_ << "\n";
     }
 
     // Periodic safety statistics
@@ -1084,6 +1359,99 @@ private:
     }
 
     return obstacles;
+  }
+
+  /**
+   * @brief Compute linearized V(s) gradient at a reference point via finite differences.
+   *
+   * Calls EvaluateSARLBatch with 5 states: center + 4 perturbations (+-dx, +-dy).
+   * Returns gradient and base value for CasADi terminal cost.
+   */
+  bool computeTerminalVGradient(
+    double ref_x, double ref_y, double ref_yaw, double ref_v,
+    const social_mpc_nav::msg::People2D::SharedPtr& people,
+    double& grad_x, double& grad_y, double& v_base)
+  {
+    grad_x = 0.0;
+    grad_y = 0.0;
+    v_base = 0.0;
+
+    if (!sarl_client_ || !sarl_client_->service_is_ready()) {
+      return false;
+    }
+    if (!people || people->people.empty()) {
+      return false;
+    }
+
+    const double delta = sarl_terminal_delta_;
+
+    auto request = std::make_shared<social_mpc_nav::srv::EvaluateSARLBatch::Request>();
+    request->num_rollouts = 5;
+    request->goal_x = static_cast<float>(goal_x_);
+    request->goal_y = static_cast<float>(goal_y_);
+
+    // Body-frame velocity for unicycle: vx_body = v, vy_body = 0
+    float vx_body = static_cast<float>(ref_v);
+    float vy_body = 0.0f;
+
+    // 5 states: center, +dx, -dx, +dy, -dy
+    float fx = static_cast<float>(ref_x);
+    float fy = static_cast<float>(ref_y);
+    float fyaw = static_cast<float>(ref_yaw);
+    float fd = static_cast<float>(delta);
+
+    // State 0: center
+    for (float val : {fx, fy, fyaw, vx_body, vy_body})
+      request->robot_states.push_back(val);
+    // State 1: +delta_x
+    for (float val : {fx + fd, fy, fyaw, vx_body, vy_body})
+      request->robot_states.push_back(val);
+    // State 2: -delta_x
+    for (float val : {fx - fd, fy, fyaw, vx_body, vy_body})
+      request->robot_states.push_back(val);
+    // State 3: +delta_y
+    for (float val : {fx, fy + fd, fyaw, vx_body, vy_body})
+      request->robot_states.push_back(val);
+    // State 4: -delta_y
+    for (float val : {fx, fy - fd, fyaw, vx_body, vy_body})
+      request->robot_states.push_back(val);
+
+    // Pack people states
+    request->num_people = static_cast<int32_t>(people->people.size());
+    for (const auto& person : people->people) {
+      request->people_states.push_back(person.x);
+      request->people_states.push_back(person.y);
+      request->people_states.push_back(person.vx);
+      request->people_states.push_back(person.vy);
+    }
+
+    // Synchronous call with short timeout
+    auto future = sarl_client_->async_send_request(request);
+    auto status = future.wait_for(std::chrono::milliseconds(10));
+
+    if (status != std::future_status::ready) {
+      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 5000,
+        "SARL terminal gradient: service timed out");
+      return false;
+    }
+
+    auto response = future.get();
+    if (!response->success || response->values.size() != 5) {
+      return false;
+    }
+
+    double v_center = static_cast<double>(response->values[0]);
+    double v_plus_x = static_cast<double>(response->values[1]);
+    double v_minus_x = static_cast<double>(response->values[2]);
+    double v_plus_y = static_cast<double>(response->values[3]);
+    double v_minus_y = static_cast<double>(response->values[4]);
+
+    // Central finite difference
+    grad_x = (v_plus_x - v_minus_x) / (2.0 * delta);
+    grad_y = (v_plus_y - v_minus_y) / (2.0 * delta);
+    v_base = v_center;
+
+    return true;
   }
 
   bool verifySolutionSafety(
@@ -1250,6 +1618,76 @@ private:
     // If no people, all weights stay 0.0
 
     opti_.set_value(attn_weights_param_, attn_vector);
+
+    // ===== Enhancement A: TERMINAL V(s) GRADIENT =====
+    double terminal_grad_x = 0.0;
+    double terminal_grad_y = 0.0;
+    double terminal_v_base = 0.0;
+    double terminal_ref_x = robot.x;
+    double terminal_ref_y = robot.y;
+    bool terminal_valid = false;
+
+    if (sarl_valid && num_people > 0) {
+      if (has_previous_solution_ && !prev_v_sol_.empty()) {
+        // Propagate previous solution to get terminal position
+        RobotState pred_terminal = robot;
+        for (size_t k = 0; k < prev_v_sol_.size(); ++k) {
+          pred_terminal.x += prev_v_sol_[k] * std::cos(pred_terminal.yaw) * dt_;
+          pred_terminal.y += prev_v_sol_[k] * std::sin(pred_terminal.yaw) * dt_;
+          pred_terminal.yaw += prev_w_sol_[k] * dt_;
+        }
+        terminal_ref_x = pred_terminal.x;
+        terminal_ref_y = pred_terminal.y;
+
+        double terminal_v = prev_v_sol_.back();
+        terminal_valid = computeTerminalVGradient(
+          terminal_ref_x, terminal_ref_y, pred_terminal.yaw, terminal_v,
+          people, terminal_grad_x, terminal_grad_y, terminal_v_base);
+      } else {
+        // First iteration: use current robot state
+        terminal_valid = computeTerminalVGradient(
+          robot.x, robot.y, robot.yaw, prev_v_cmd_,
+          people, terminal_grad_x, terminal_grad_y, terminal_v_base);
+        terminal_ref_x = robot.x;
+        terminal_ref_y = robot.y;
+      }
+    }
+
+    // Set terminal V(s) CasADi parameters
+    opti_.set_value(terminal_v_grad_x_param_, terminal_valid ? terminal_grad_x : 0.0);
+    opti_.set_value(terminal_v_grad_y_param_, terminal_valid ? terminal_grad_y : 0.0);
+    opti_.set_value(terminal_ref_x_param_, terminal_ref_x);
+    opti_.set_value(terminal_ref_y_param_, terminal_ref_y);
+    opti_.set_value(terminal_v_base_param_, terminal_valid ? terminal_v_base : 0.0);
+    opti_.set_value(scene_mult_terminal_param_, terminal_valid ? scene_mult.terminal_mult : 0.0);
+    opti_.set_value(w_sarl_terminal_param_, terminal_valid ? w_sarl_terminal_ : 0.0);
+
+    // Store for logging
+    terminal_v_valid_log_ = terminal_valid;
+    terminal_v_base_log_ = terminal_v_base;
+    terminal_grad_x_log_ = terminal_grad_x;
+    terminal_grad_y_log_ = terminal_grad_y;
+
+    // ===== Enhancement C: SARL ACTION REFERENCE =====
+    double sarl_ref_speed = 0.0;
+    double sarl_ref_heading = 0.0;
+    bool sarl_ref_valid = false;
+
+    if (sarl_valid && sarl_data->has_recommended_action) {
+      sarl_ref_speed = static_cast<double>(sarl_data->recommended_speed);
+      sarl_ref_heading = static_cast<double>(sarl_data->recommended_heading);
+      sarl_ref_valid = (sarl_ref_speed > 0.01);
+    }
+
+    opti_.set_value(sarl_ref_speed_param_, sarl_ref_speed);
+    opti_.set_value(sarl_ref_heading_param_, sarl_ref_heading);
+    opti_.set_value(w_sarl_ref_speed_param_, sarl_ref_valid ? w_sarl_ref_speed_ : 0.0);
+    opti_.set_value(w_sarl_ref_heading_param_, sarl_ref_valid ? w_sarl_ref_heading_ : 0.0);
+
+    // Store for logging
+    sarl_ref_valid_log_ = sarl_ref_valid;
+    sarl_ref_speed_log_ = sarl_ref_speed;
+    sarl_ref_heading_log_ = sarl_ref_heading;
 
     // ===== INITIAL GUESS =====
 
@@ -1441,6 +1879,17 @@ private:
   double sarl_staleness_sec_;
   std::string sarl_output_topic_;
 
+  // Enhancement A: Terminal V(s) parameters
+  double w_sarl_terminal_;
+  double sarl_terminal_delta_;
+  std::string sarl_service_name_;
+
+  // Enhancement C: SARL action reference parameters
+  double w_sarl_ref_speed_;
+  double w_sarl_ref_heading_;
+  int sarl_ref_horizon_;
+  double sarl_ref_decay_rate_;
+
   // Previous control commands
   double prev_v_cmd_{0.0};
   double prev_w_cmd_{0.0};
@@ -1468,6 +1917,15 @@ private:
   // SARL state tracking (for logging)
   bool current_sarl_active_{false};
   double current_scene_mult_{1.0};
+
+  // Enhancement A/C logging state
+  bool terminal_v_valid_log_{false};
+  double terminal_v_base_log_{0.0};
+  double terminal_grad_x_log_{0.0};
+  double terminal_grad_y_log_{0.0};
+  bool sarl_ref_valid_log_{false};
+  double sarl_ref_speed_log_{0.0};
+  double sarl_ref_heading_log_{0.0};
 
   std::string cmd_vel_topic_, scan_topic_, crowd_topic_, global_path_topic_;
   std::string map_frame_, base_link_frame_;
@@ -1500,15 +1958,28 @@ private:
   MX attn_weights_param_;
   MX scene_mult_param_;
 
+  // Enhancement A: Terminal V(s) CasADi parameters
+  MX terminal_v_grad_x_param_, terminal_v_grad_y_param_;
+  MX terminal_ref_x_param_, terminal_ref_y_param_;
+  MX terminal_v_base_param_;
+  MX scene_mult_terminal_param_;
+  MX w_sarl_terminal_param_;
+
+  // Enhancement C: SARL action reference CasADi parameters
+  MX sarl_ref_speed_param_, sarl_ref_heading_param_;
+  MX w_sarl_ref_speed_param_, w_sarl_ref_heading_param_;
+
   // ROS publishers/subscribers
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Publisher<social_mpc_nav::msg::NavigationExplanation>::SharedPtr explanation_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr sarl_mpc_marker_pub_;
   rclcpp::Subscription<person_tracker::msg::PersonInfoArray>::SharedPtr people_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<social_mpc_nav::msg::VLMParameters>::SharedPtr vlm_params_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_sub_;
   rclcpp::Subscription<social_mpc_nav::msg::SARLOutput>::SharedPtr sarl_sub_;
+  rclcpp::Client<social_mpc_nav::srv::EvaluateSARLBatch>::SharedPtr sarl_client_;
 
   rclcpp::TimerBase::SharedPtr pose_update_timer_;
   rclcpp::TimerBase::SharedPtr timer_;

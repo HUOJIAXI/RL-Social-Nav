@@ -34,9 +34,22 @@ mpc_controller_casadi_sarl_node:
     # Higher = stronger avoidance of SARL-attended people
     w_sarl_attention: 1.0
 
+    # Terminal V(s) linear approximation weight (Enhancement A)
+    # Higher = more influence from SARL's learned social awareness at horizon end
+    w_sarl_terminal: 2.0
+
+    # SARL recommended action reference weights (Enhancement C)
+    # Soft tracking of SARL's chosen action for the first K MPC steps
+    w_sarl_ref_speed: 0.5
+    w_sarl_ref_heading: 1.0
+    sarl_ref_horizon: 3
+    sarl_ref_decay_rate: 0.5
+
     # ========== SARL Configuration ==========
     sarl_staleness_sec: 0.5
     sarl_output_topic: "/sarl/output"
+    sarl_service_name: "/sarl/evaluate_batch"
+    sarl_terminal_delta: 0.3
 
     # ========== Collision Avoidance ==========
     min_obstacle_distance: 0.3

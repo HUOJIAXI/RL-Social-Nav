@@ -118,6 +118,15 @@ def generate_launch_description():
     w_sarl_attention_arg = DeclareLaunchArgument(
         'w_sarl_attention', default_value='1.0',
         description='SARL attention-weighted social cost weight')
+    w_sarl_terminal_arg = DeclareLaunchArgument(
+        'w_sarl_terminal', default_value='2.0',
+        description='SARL terminal V(s) linear approximation weight')
+    w_sarl_ref_speed_arg = DeclareLaunchArgument(
+        'w_sarl_ref_speed', default_value='0.5',
+        description='SARL recommended action speed reference weight')
+    w_sarl_ref_heading_arg = DeclareLaunchArgument(
+        'w_sarl_ref_heading', default_value='1.0',
+        description='SARL recommended action heading reference weight')
 
     # SARL bridge
     sarl_model_path_arg = DeclareLaunchArgument(
@@ -149,6 +158,9 @@ def generate_launch_description():
     w_vlm_scene = LaunchConfiguration('w_vlm_scene')
     w_vlm_personal = LaunchConfiguration('w_vlm_personal')
     w_sarl_attention = LaunchConfiguration('w_sarl_attention')
+    w_sarl_terminal = LaunchConfiguration('w_sarl_terminal')
+    w_sarl_ref_speed = LaunchConfiguration('w_sarl_ref_speed')
+    w_sarl_ref_heading = LaunchConfiguration('w_sarl_ref_heading')
     sarl_model_path = LaunchConfiguration('sarl_model_path')
     sarl_rate_hz = LaunchConfiguration('sarl_rate_hz')
     enable_vlm = LaunchConfiguration('enable_vlm')
@@ -165,7 +177,10 @@ def generate_launch_description():
             'MPC: N=', N, ' dt=', dt, ' (CasADi/IPOPT optimization)\n',
             'VLM weights: dir=', w_vlm_directional, ' action=', w_vlm_action,
             ' scene=', w_vlm_scene, ' personal=', w_vlm_personal, '\n',
-            'SARL weights: attention=', w_sarl_attention, '\n',
+            'SARL weights: attention=', w_sarl_attention,
+            ' terminal=', w_sarl_terminal,
+            ' ref_speed=', w_sarl_ref_speed,
+            ' ref_heading=', w_sarl_ref_heading, '\n',
             'SARL model: ', sarl_model_path, ' @ ', sarl_rate_hz, ' Hz\n',
             'VLM enabled (master control): ', enable_vlm, '\n',
             'Debug logging: ', enable_debug_logging, '\n',
@@ -233,6 +248,7 @@ def generate_launch_description():
                 'odom_topic': '/task_generator_node/tiago_base/odom',
                 'crowd_topic': '/person_tracker/person_info',
                 'map_frame': 'map',
+                'enable_action_selection': True,
             }
         ],
         prefix=['stdbuf -o L'],
@@ -298,6 +314,9 @@ def generate_launch_description():
                 'w_vlm_scene': w_vlm_scene,
                 'w_vlm_personal': w_vlm_personal,
                 'w_sarl_attention': w_sarl_attention,
+                'w_sarl_terminal': w_sarl_terminal,
+                'w_sarl_ref_speed': w_sarl_ref_speed,
+                'w_sarl_ref_heading': w_sarl_ref_heading,
                 'enable_vlm': enable_vlm,
                 'cmd_vel_topic': '/task_generator_node/tiago_base/cmd_vel',
                 'scan_topic': '/task_generator_node/tiago_base/lidar',
@@ -362,6 +381,9 @@ def generate_launch_description():
 
         # Launch arguments - SARL weights
         w_sarl_attention_arg,
+        w_sarl_terminal_arg,
+        w_sarl_ref_speed_arg,
+        w_sarl_ref_heading_arg,
 
         # Launch arguments - SARL bridge
         sarl_model_path_arg,

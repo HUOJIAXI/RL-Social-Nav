@@ -250,16 +250,17 @@
     \node[font=\footnotesize, text width=12cm, align=center] at (0,2.0) {
       Robot state + Pedestrian states $\;\longrightarrow\;$
       \highlight{Per-person Attention $\alpha_i$} \textbar{}
-      \highlight{State Value $V(s)$}
+      \highlight{State Value $V(s)$} \textbar{}
+      \highlight{Recommended Action $(v_x, v_y)$}
     };
 
     % Layer 3: MPC (bottom)
     \node[layer, fill=mpcred!10, draw=mpcred!60] (mpc) at (0,0.2) {};
-    \node[lbl, text=mpcred!80!black] at (-5, 0.7) {Layer 3: MPC Control};
+    \node[lbl, text=mpcred!80!black] at (-5, 0.7) {Layer 3: CasADi/IPOPT MPC};
     \node[font=\footnotesize, text width=12cm, align=center] at (0,0.0) {
-      Random-shooting optimization $\;\longrightarrow\;$
+      Nonlinear optimization (IPOPT) $\;\longrightarrow\;$
       \mpchl{Velocity $v^*$} \textbar{} \mpchl{Angular vel.\ $\omega^*$}
-      \textbar{} \mpchl{Safety guarantees}
+      \textbar{} \mpchl{Hard safety constraints}
     };
 
     % Synergy arrows
@@ -271,7 +272,7 @@
     \draw[arrow, sarlblue!70, line width=1.5pt]
       ([xshift=-2cm]sarl.south) -- ([xshift=-2cm]mpc.north)
       node[midway, left, font=\scriptsize, text=sarlblue!70!black]
-      {\textit{Attention weights + $V(s)$}};
+      {\textit{$\alpha_i$ + $\nabla V(s_N)$ + action ref}};
 
     \draw[arrow, sarlblue!70, line width=1.5pt]
       ([xshift=2cm]sarl.north) -- ([xshift=2cm]vlm.south)
@@ -558,8 +559,8 @@
 \section{MPC Formulation}
 % ============================================================
 
-\begin{frame}{Model Predictive Control: Problem Formulation}
-  \begin{block}{Unicycle Dynamics}
+\begin{frame}{CasADi/IPOPT MPC: Problem Formulation}
+  \begin{block}{Unicycle Dynamics (Symbolic, Built Once)}
     \vspace{-6pt}
     \begin{align}
       x_{k+1} &= x_k + v_k \cos(\theta_k) \cdot \Delta t \nonumber \\
@@ -569,7 +570,7 @@
   \end{block}
 
   \vspace{2pt}
-  \begin{block}{MPC Optimization}
+  \begin{block}{Nonlinear Program (Solved by IPOPT)}
     \vspace{-4pt}
     \[
       (v^*, \omega^*) = \argmin_{v_{0:N-1},\, \omega_{0:N-1}}
@@ -580,7 +581,7 @@
   \end{block}
 
   \vspace{2pt}
-  \textbf{Subject to:}
+  \textbf{Hard Constraints (enforced by IPOPT):}
   \begin{columns}[T]
     \begin{column}{0.45\textwidth}
       \begin{itemize}
@@ -591,7 +592,7 @@
     \begin{column}{0.45\textwidth}
       \begin{itemize}
         \item $d_{\text{obs}}(\mathbf{x}_k) \ge d_{\text{hard}}$ \quad (safety)
-        \item Unicycle dynamics (above)
+        \item Unicycle dynamics (equality)
       \end{itemize}
     \end{column}
   \end{columns}
@@ -599,36 +600,43 @@
   \vspace{6pt}
   \centering
   \footnotesize
-  $N = 15$ steps, $\Delta t = 0.2$\,s (horizon = 3.0\,s), 100 random rollouts, 10\,Hz control rate
+  $N = 15$ steps, $\Delta t = 0.2$\,s (horizon = 3.0\,s),
+  CasADi symbolic graph built once $\to$ IPOPT solves at 10\,Hz
 \end{frame}
 
 % ============================================================
 \begin{frame}{MPC Cost Function: Full Breakdown}
   \vspace{-4pt}
+  \scriptsize
   \[
     J_k^{\text{stage}} = \underbrace{J_k^{\text{goal}}}_{\text{\highlight{Goal}}}
     + \underbrace{J_k^{\text{social}}}_{\text{\highlight{SARL Social}}}
     + \underbrace{J_k^{\text{obs}}}_{\text{\mpchl{Obstacle}}}
-    + \underbrace{J_k^{\text{smooth}}}_{\text{\mpchl{Smoothness}}}
+    + \underbrace{J_k^{\text{smooth}}}_{\text{\mpchl{Smooth}}}
     + \underbrace{J_k^{\text{vlm}}}_{\text{\vlmhl{VLM}}}
+    + \underbrace{J_k^{\text{ref}}}_{\text{\synhl{SARL Ref}}}
   \]
 
   \vspace{2pt}
   \begin{columns}[T]
     \begin{column}{0.48\textwidth}
-      \textbf{Goal Cost:}
-      \[
-        J_k^{\text{goal}} = w_g \bigl\|(x_k - g_x,\; y_k - g_y)\bigr\|^2
-      \]
-
       \textbf{SARL Attention-Weighted Social Cost:}
       \[
         J_k^{\text{social}} = \sum_{i=1}^{n}
         \frac{w_s \cdot n \cdot \alpha_i \cdot m_{\text{attn}}}
              {d(\mathbf{x}_k, \mathbf{p}_i) + \epsilon}
       \]
-      {\footnotesize where $\alpha_i$ = SARL attention,
-       $m_{\text{attn}}$ = scene multiplier}
+
+      \vspace{2pt}
+      \textbf{SARL Action Reference} {\footnotesize (first $K{=}3$ steps):}
+      \[
+        J_k^{\text{ref}} = e^{-k \cdot \lambda}\bigl[
+          w_v^{\text{ref}}(v_k - \hat{v})^2
+          + w_\theta^{\text{ref}}(1 - \cos(\theta_k - \hat{\theta}))
+        \bigr]
+      \]
+      {\footnotesize $\hat{v}, \hat{\theta}$ = SARL recommended speed \& heading\\
+       $\lambda{=}0.5$: exponential decay over horizon}
 
       \vspace{4pt}
       \textbf{Smoothness Cost:}
@@ -638,78 +646,92 @@
     \end{column}
 
     \begin{column}{0.48\textwidth}
-      \textbf{Obstacle Cost:}
+      \textbf{Obstacle Cost} {\footnotesize (hard constraint in IPOPT):}
       \[
-        J_k^{\text{obs}} = \begin{cases}
-          +\infty & d < d_{\text{hard}} \\[3pt]
-          1000    & d_{\text{hard}} \le d < d_{\min} \\[3pt]
-          \dfrac{w_o}{d + 0.1} & d \ge d_{\min}
-        \end{cases}
+        d_{\text{obs}}(\mathbf{x}_k) \ge d_{\text{hard}} \quad \forall\, k
       \]
+      {\footnotesize Plus soft barrier: $w_o / (d + 0.1)$ for $d \ge d_{\min}$}
 
       \vspace{6pt}
-      \textbf{SARL Terminal Cost:}
+      \textbf{Terminal V(s) via Linear Approximation:}
       \[
-        \boxed{J_N^{\text{term}} = -w_t \cdot m_{\text{term}} \cdot V(s_N)}
+        \boxed{J_N^{\text{term}} = -w_t \cdot m_{\text{term}} \cdot \hat{V}(s_N)}
       \]
-      {\footnotesize Negated: higher $V(s)$ $\Rightarrow$ lower cost\\
-       $\Rightarrow$ MPC seeks high-value terminal states}
+      \vspace{-4pt}
+      \[
+        \hat{V}(s_N) \approx V_0 + \frac{\partial V}{\partial x}\Delta x
+        + \frac{\partial V}{\partial y}\Delta y
+      \]
+      {\footnotesize Gradient from 5-point finite differences via batch service.\\
+       $V(s)$ is a black-box NN --- linearization makes it\\
+       compatible with CasADi's symbolic graph.}
     \end{column}
   \end{columns}
 \end{frame}
 
 % ============================================================
-\begin{frame}{Random-Shooting MPC with SARL Batch Evaluation}
+\begin{frame}{CasADi/IPOPT Optimization Pipeline with SARL}
   \centering
   \begin{tikzpicture}[
-    scale=0.72, transform shape,
+    scale=0.68, transform shape,
     box/.style={draw, rounded corners=4pt, minimum height=0.9cm,
                 align=center, font=\footnotesize, line width=0.8pt},
-    proc/.style={box, fill=mpcred!10, draw=mpcred!60, minimum width=3.2cm},
-    sarl/.style={box, fill=sarlblue!12, draw=sarlblue!60, minimum width=3.2cm},
+    proc/.style={box, fill=mpcred!10, draw=mpcred!60, minimum width=3.5cm},
+    sarl/.style={box, fill=sarlblue!12, draw=sarlblue!60, minimum width=3.5cm},
+    setup/.style={box, fill=gray!10, draw=gray!50, minimum width=3.5cm},
     arrow/.style={-{Stealth[length=5pt]}, thick},
   ]
-    % Step 1
-    \node[proc] (sample) at (0,0) {Sample 100 trajectories\\
-      $v_k \sim \mathcal{U}(0, v_{\max})$\\
-      $\omega_k \sim \mathcal{U}(-\omega_{\max}, \omega_{\max})$};
+    % Row 1: Setup (once)
+    \node[setup] (build) at (0,2.5) {\textbf{Build Once}\\
+      CasADi symbolic graph\\
+      dynamics + costs + constraints};
 
-    % Step 2
-    \node[proc] (prop) at (5.5,0) {Propagate dynamics\\
-      $\mathbf{x}_N^{(j)}$ for $j = 1,\dots,100$};
+    \node[setup] (solver) at (6,2.5) {IPOPT solver config\\
+      warm start, 200 iter max\\
+      linear solver: MA27};
 
-    % Step 3 (SARL batch)
-    \node[sarl] (batch) at (11,0) {SARL Batch Service\\
-      $\{V(s_N^{(j)})\}_{j=1}^{100}$\\
-      {\tiny $< 50$\,ms on GPU}};
+    \draw[arrow, gray] (build) -- (solver);
 
-    % Step 4
-    \node[proc] (eval) at (5.5,-3) {Evaluate total cost\\
-      $J^{(j)} = \sum_k J_k^{\text{stage}} + J_N^{\text{term}}$};
+    % Row 2: Per-cycle parameter update
+    \node[sarl] (grad) at (0,0) {$\nabla V(s_N)$ Gradient\\
+      5-point finite diff.\\
+      via batch service};
 
-    % Step 5
-    \node[proc, fill=vlmgreen!10, draw=vlmgreen!60] (best) at (0,-3) {Select best\\
-      $j^* = \argmin_j J^{(j)}$\\
-      Apply $v_0^{(j^*)}, \omega_0^{(j^*)}$};
+    \node[sarl] (ref) at (6,0) {SARL Action Ref\\
+      81 candidates $\to$ best $(v_x, v_y)$\\
+      {\tiny speed + heading}};
+
+    \node[proc] (params) at (12,0) {Set CasADi Params\\
+      $\alpha_i$, $m_{\text{scene}}$, $\nabla V$,\\
+      $\hat{v}_{\text{ref}}$, $\hat{\theta}_{\text{ref}}$};
+
+    % Row 3: Solve
+    \node[proc, line width=1.2pt, minimum width=5cm,
+          fill=mpcred!15] (ipopt) at (6,-3) {\textbf{IPOPT Solve}\\
+      $\min_{v_{0:N},\, \omega_{0:N}} J(v, \omega; \text{params})$\\
+      s.t.\ dynamics + safety constraints};
+
+    \node[proc, fill=vlmgreen!10, draw=vlmgreen!60] (apply) at (12,-3) {Apply\\
+      $v_0^*, \omega_0^*$\\
+      $\to$ \texttt{/cmd\_vel}};
 
     % Arrows
-    \draw[arrow] (sample) -- (prop);
-    \draw[arrow] (prop) -- (batch);
-    \draw[arrow] (batch) |- node[right, font=\tiny, pos=0.3] {$V(s_N^{(j)})$} (eval);
-    \draw[arrow] (prop) -- (eval);
-    \draw[arrow] (eval) -- (best);
+    \draw[arrow, sarlblue!60] (grad) -- (params);
+    \draw[arrow, sarlblue!60] (ref) -- (params);
+    \draw[arrow] (params) |- (ipopt);
+    \draw[arrow, very thick, vlmgreen!70] (ipopt) -- (apply);
 
-    % Control output
-    \draw[arrow, vlmgreen!70, very thick] (best.south) -- ++(0,-1)
-      node[below, font=\small\bfseries] {$\to$ \texttt{/cmd\_vel}};
+    % Warm start feedback
+    \draw[arrow, gray!60, dashed] (apply.south) -- ++(0,-0.8) -| (ipopt.south)
+      node[midway, below, font=\tiny] {warm start from previous solution};
 
     % Timing annotation
     \node[draw=gray!40, fill=gray!5, rounded corners=3pt,
-          font=\tiny, text width=3.5cm, align=center] at (11,-3) {
-      Receding horizon: apply first\\
-      control, re-plan at 10\,Hz.\\
-      Fallback to uniform cost if\\
-      SARL service times out.
+          font=\tiny, text width=4cm, align=center] at (0,-3) {
+      Receding horizon at 10\,Hz.\\
+      Gradient eval: ${\sim}1$\,ms (5 states).\\
+      IPOPT solve: ${\sim}5$--$15$\,ms.\\
+      If SARL stale $\to$ weights set to 0.
     };
   \end{tikzpicture}
 \end{frame}
@@ -1075,58 +1097,60 @@
 \end{frame}
 
 % ============================================================
-\begin{frame}{SARL Bridge Node: Real-Time Inference}
+\begin{frame}{SARL Bridge Node: Real-Time Inference + Action Selection}
   \begin{columns}[T]
     \begin{column}{0.48\textwidth}
-      \textbf{Dual Interface Design:}
+      \textbf{Triple Interface Design:}
 
       \vspace{4pt}
       \begin{block}{\footnotesize Interface 1: Topic Publisher (10\,Hz)}
         \begin{itemize}
-          \item Subscribes: \texttt{/odom}, \texttt{/person\_info}
-          \item Publishes: \texttt{/sarl/output}
           \item Content: $\{\alpha_i\}$, $V(s)$, person IDs
-          \item RViz markers: colored spheres\\
-                {\scriptsize (green$\to$yellow$\to$red $\propto$ attention)}
+          \item \textbf{+ Recommended action} $(\hat{v}_x, \hat{v}_y)$
+          \item RViz markers: attention spheres + action arrow
         \end{itemize}
       \end{block}
 
       \begin{block}{\footnotesize Interface 2: Batch Service}
         \begin{itemize}
           \item Service: \texttt{/sarl/evaluate\_batch}
-          \item Input: 100 terminal states from MPC
-          \item Output: $\{V(s_N^{(j)})\}_{j=1}^{100}$
-          \item Latency: $<50$\,ms with PyTorch
+          \item Used for terminal $\nabla V(s)$: 5 states
+          \item Latency: $<1$\,ms (5 states)
+        \end{itemize}
+      \end{block}
+
+      \begin{block}{\footnotesize Interface 3: Action Selection}
+        \begin{itemize}
+          \item 81 candidates: $5 \times 16 + 1$ (stop)
+          \item $Q = r + \gamma^{\Delta t \cdot v_{\text{pref}}} V(s')$
+          \item Single batched forward pass (${\sim}1$\,ms)
+          \item Matches CrowdNav \texttt{cadrl.py} exactly
         \end{itemize}
       \end{block}
     \end{column}
 
     \begin{column}{0.48\textwidth}
-      \textbf{Implementation Details:}
-      \begin{itemize}
-        \item Loads \texttt{rl\_model.pth} from CrowdNav
-        \item Replicates \texttt{ValueNetwork} architecture exactly
-        \item Goal-oriented \texttt{rotate()} coordinate transform
-        \item Unicycle $\to$ holonomic velocity conversion:
-      \end{itemize}
+      \textbf{Action Space} {\footnotesize (from CrowdNav)}:
       \[
-        v_x = v \cos(\theta), \quad v_y = v \sin(\theta)
+        v_i = \frac{e^{(i+1)/5} - 1}{e - 1}\cdot v_{\text{pref}}, \quad
+        \theta_j = \frac{2\pi j}{16}
       \]
+      {\footnotesize 5 exponential speeds $\times$ 16 rotations + stop = 81}
 
       \vspace{4pt}
-      \textbf{Staleness Handling:}
+      \textbf{Q-Value Computation:}
       \begin{itemize}
-        \item SARL data timestamped at publication
-        \item MPC checks: if age $> 0.5$\,s $\Rightarrow$ fallback to uniform social cost
-        \item Ensures safety even if SARL node crashes
+        \item Propagate robot \& humans one step ($\Delta t = 0.25$\,s)
+        \item Reward: collision $-0.25$, goal $+1.0$, proximity penalty
+        \item Batch $V(s')$ via single forward pass
+        \item Best action $\to$ $(v_x, v_y)$ in world frame
       \end{itemize}
 
       \vspace{4pt}
-      \textbf{RViz Attention Markers:}
+      \textbf{RViz Visualizations:}
       \begin{itemize}
-        \item Sphere radius: $0.2 + \alpha_i \times 0.6$\,m
-        \item Text label: person ID + attention weight
-        \item $V(s)$ displayed above robot
+        \item \texttt{/sarl/attention\_markers}: spheres, $V(s)$ text, \textbf{action arrow} (cyan)
+        \item \texttt{/sarl/mpc\_markers}: terminal state, $\nabla V$ arrow, ref heading, MPC cmd
       \end{itemize}
     \end{column}
   \end{columns}
@@ -1195,7 +1219,7 @@
 \begin{frame}{Key Configuration Parameters}
   \begin{columns}[T]
     \begin{column}{0.48\textwidth}
-      \begin{block}{\footnotesize MPC Parameters (\texttt{mpc\_sarl.yaml})}
+      \begin{block}{\footnotesize MPC Parameters (\texttt{mpc\_casadi\_sarl.yaml})}
         \footnotesize
         \begin{tabular}{lrl}
           \toprule
@@ -1203,17 +1227,20 @@
           \midrule
           $\Delta t$        & 0.2     & s \\
           $N$ (horizon)     & 15      & steps \\
-          Rollouts          & 100     & --- \\
+          Solver            & \multicolumn{2}{l}{CasADi/IPOPT} \\
           Control rate      & 10      & Hz \\
           \midrule
-          $w_{\text{goal}}$    & 2.0  & --- \\
+          $w_{\text{goal}}$    & 20.0 & --- \\
           $w_{\text{social}}$  & 1.0  & --- \\
           $w_{\text{obstacle}}$& 3.0  & --- \\
           $w_{\text{smooth}}$  & 0.1  & --- \\
           \midrule
-          $w_{\text{sarl-attn}}$    & 1.0 & --- \\
-          $w_{\text{sarl-term}}$    & 0.5 & --- \\
-          Staleness timeout         & 0.5 & s \\
+          $w_{\text{sarl-attn}}$      & 1.0 & --- \\
+          $w_{\text{sarl-term}}$      & 2.0 & --- \\
+          $w_{\text{sarl-ref-spd}}$   & 0.5 & --- \\
+          $w_{\text{sarl-ref-hdg}}$   & 1.0 & --- \\
+          \texttt{sarl\_ref\_horizon} & 3   & steps \\
+          Staleness timeout           & 0.5 & s \\
           \midrule
           $d_{\text{hard}}$    & 0.2  & m \\
           $d_{\min}^{\text{obs}}$ & 0.3 & m \\
@@ -1244,7 +1271,7 @@
       \begin{exampleblock}{\footnotesize Launch Command}
         \ttfamily\tiny
         ros2 launch social\_mpc\_nav \\
-        \quad mpc\_sarl\_vlm.launch.py \\
+        \quad mpc\_casadi\_sarl\_vlm.launch.py \\
         \quad enable\_vlm:=true \\
         \quad log\_mpc\_to\_csv:=true \\
         \quad goal\_x:=10.0 goal\_y:=5.0
@@ -1263,28 +1290,26 @@
     \begin{column}{0.55\textwidth}
       \begin{algorithmic}[1]
         \footnotesize
-        \REQUIRE Trained SARL model, VLM API, MPC config
+        \REQUIRE Trained SARL model, VLM API, CasADi MPC
+        \STATE \textbf{Build} CasADi symbolic graph (once)
         \STATE \textbf{Initialize} ROS\,2 nodes, load SARL weights
         \WHILE{navigation active (at 10\,Hz)}
-          \STATE Get robot state $(x, y, \theta, v)$ from odometry
-          \STATE Get pedestrian states $\lbrace\mathbf{p}_i, \mathbf{v}_i\rbrace$ from tracker
+          \STATE Get robot state $(x, y, \theta, v)$ from TF
+          \STATE Get pedestrian states $\lbrace\mathbf{p}_i, \mathbf{v}_i\rbrace$
           \STATE \textcolor{sarlblue}{\textbf{// SARL Inference (10\,Hz)}}
-          \STATE Rotate states to goal-centric frame
           \STATE Compute $\lbrace\alpha_i\rbrace, V(s)$ via ValueNetwork
-          \STATE Publish \texttt{/sarl/output}
+          \STATE Select best action from 81 candidates \hfill \textit{Enh.\,C}
+          \STATE Publish \texttt{/sarl/output} with $(\hat{v}_x, \hat{v}_y)$
           \STATE \textcolor{vlmgreen}{\textbf{// VLM (event-triggered)}}
           \IF{trigger condition met}
-            \STATE Assemble prompt with SARL $\alpha_i$ \hfill \textit{Syn.\,1}
-            \STATE Query VLM $\to$ scene type, density, action
+            \STATE Query VLM with SARL $\alpha_i$ \hfill \textit{Syn.\,1}
           \ENDIF
-          \STATE \textcolor{mpcred}{\textbf{// MPC Optimization}}
-          \STATE Get scene multiplier $m_{\text{attn}}, m_{\text{term}}$ \hfill \textit{Syn.\,2}
-          \STATE Sample 100 random trajectories
-          \STATE Call \texttt{evaluate\_batch} $\to \lbrace V(s_N^{(j)})\rbrace$
-          \STATE Evaluate $J^{(j)}$ with all cost terms
-          \STATE $j^* \gets \argmin_j J^{(j)}$
-          \STATE Apply $v_0^{(j^*)}, \omega_0^{(j^*)}$ to \texttt{/cmd\_vel}
-          \STATE Publish explanation \hfill \textit{Syn.\,3}
+          \STATE \textcolor{mpcred}{\textbf{// CasADi MPC Optimization}}
+          \STATE Compute $\nabla V(s_N)$ via 5-pt finite diff. \hfill \textit{Enh.\,A}
+          \STATE Set CasADi params: $\alpha_i, m, \nabla V, \hat{v}, \hat{\theta}$
+          \STATE IPOPT solve $\to$ $(v^*_{0:N}, \omega^*_{0:N})$
+          \STATE Apply $v_0^*, \omega_0^*$ to \texttt{/cmd\_vel}
+          \STATE Publish explanation + markers \hfill \textit{Syn.\,3}
         \ENDWHILE
       \end{algorithmic}
     \end{column}
@@ -1426,8 +1451,8 @@
           \item End-to-end fine-tuning of SARL with VLM feedback
           \item Pedestrian trajectory prediction integration
           \item Multi-robot coordination with shared attention
-          \item CasADi-based gradient MPC replacing random shooting
           \item Smaller on-device VLMs for edge deployment
+          \item Online SARL fine-tuning from MPC experience
         \end{itemize}
       \end{block}
     \end{column}
@@ -1456,6 +1481,11 @@
         float32 robot\_x\\
         float32 robot\_y\\
         float32 robot\_yaw\\
+        \textcolor{sarlblue}{float32 recommended\_vx}\\
+        \textcolor{sarlblue}{float32 recommended\_vy}\\
+        \textcolor{sarlblue}{float32 recommended\_speed}\\
+        \textcolor{sarlblue}{float32 recommended\_heading}\\
+        \textcolor{sarlblue}{bool has\_recommended\_action}\\
         float32 inference\_time\_ms\\
         bool is\_valid
       \end{block}

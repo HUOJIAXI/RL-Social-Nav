@@ -16,6 +16,14 @@ float32 robot_x
 float32 robot_y
 float32 robot_yaw
 
+# SARL recommended action (best action from value-based selection)
+# World-frame holonomic velocity components
+float32 recommended_vx       # World-frame holonomic velocity x (m/s)
+float32 recommended_vy       # World-frame holonomic velocity y (m/s)
+float32 recommended_speed    # Speed magnitude sqrt(vx^2 + vy^2) (m/s)
+float32 recommended_heading  # World-frame heading atan2(vy, vx) (radians)
+bool has_recommended_action  # True if action selection was performed
+
 # Metadata
 float32 inference_time_ms
 bool is_valid

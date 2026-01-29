@@ -432,17 +432,35 @@ Visualization Manager:
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: MarkerArray
+      Name: SARL Attention
       Namespaces:
         sarl_attention: true
         sarl_attention_text: true
         sarl_state_value: true
+        sarl_action_arrow: true
+        sarl_action_text: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /sarl/attention_markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: SARL MPC
+      Namespaces:
+        sarl_ref_heading: true
+        mpc_cmd_arrow: true
+        terminal_state: true
+        terminal_v_gradient: true
+        terminal_v_info: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /sarl/mpc_markers
       Value: true
   Enabled: true
   Global Options:
