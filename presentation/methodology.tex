@@ -1,0 +1,133 @@
+\section{Methodology}
+\label{sec:method}
+
+\begin{figure*}[!htbp]
+  \centering
+  \includegraphics[width=\textwidth]{RAL/figs/completeframework_1230_camera_fix_compressed.drawio.pdf}
+  \caption{Overall architecture of VISTA-SARL\@. A pre-trained SARL value network provides per-pedestrian attention weights, a recommended action, and a linearized terminal value, which are fused with VLM-based semantic perception into a CasADi/IPOPT MPC at 10\,Hz.}
+  \label{overallarch}
+\end{figure*}
+
+\subsection{System Overview}
+\label{subsec:arch}
+
+VISTA-SARL is a dual-reasoning social navigation framework that combines VLM-based semantic perception with a learned social attention layer from SARL~\cite{chen2019crowd}, as shown in Fig.~\ref{overallarch}.
+The VLM layer queries a vision-language model to produce a social template $\mathcal{T}$ containing scene type, crowd density, action suggestions, and comfort distances, which modulate MPC cost weights.
+While effective for high-level semantic reasoning, VLMs operate at low frequency (event-triggered), treat all pedestrians uniformly, and lack the ability to anticipate pedestrian--robot interaction dynamics.
+
+VISTA-SARL addresses these limitations by introducing three SARL-derived signals into the MPC: (i)~per-pedestrian attention weights $\alpha_i$ that replace uniform social costs, (ii)~a recommended action $(\hat{v},\hat{\theta})$ from value-based action selection that guides near-term control, and (iii)~a linearized terminal value $\hat{V}(s_N)$ that encodes long-horizon social awareness.
+These signals run at 10\,Hz, complementing the VLM's slower semantic updates with continuous learned social feedback.
+
+At each control cycle, we maintain a scene state
+$\mathcal{S}=\{\mathbf{x}_0,\mathcal{H},\mathcal{O},\mathcal{G}\}$,
+where $\mathbf{x}_0=[x_0,y_0,\theta_0]^\top$ is the robot state,
+$\mathcal{H}=\{(\mathbf{p}_i,\mathbf{v}_i)\}_{i=1}^{N_h}$ the tracked pedestrians,
+$\mathcal{O}$ the obstacle set, and
+$\mathcal{G}=(\mathbf{p}_{\text{goal}},\mathcal{W})$ the goal with A*-planned waypoints~\cite{hart1968formal}.
+
+\subsection{VLM-Based Social Template}
+\label{subsec:vlm}
+
+The VLM perception pipeline uses an RGB-D camera with YOLOv8-based detection~\cite{varghese2024yolov8} and Kalman-filter tracking~\cite{kim2021eagermot} to produce an annotated image, which is sent to the VLM along with a structured prompt.
+Crucially, VLM prompts are enriched with SARL attention labels (e.g., \texttt{SARL\_ATTN=0.72}), enabling the VLM to prioritize pedestrians that the learned policy deems behaviorally important (Synergy~1).
+The VLM returns a social template:
+\begin{equation}
+\mathcal{T}=\{s_{\text{scene}},\rho_{\text{crowd}},a_{\text{rec}},\kappa_v,d_{\text{pers}}^{\text{soc}},\sigma_{\text{side}},f_{\text{wait}},e_{\text{exp}}\},
+\end{equation}
+which is validated, clamped, and cached with expiration.
+The template modulates MPC parameters: $\kappa_v$ scales $v_{\max}$, $d_{\text{pers}}^{\text{soc}}$ sets the personal distance, $\sigma_{\text{side}}$ encodes a side preference, and the scene/crowd classification conditions a VLM-adaptive soft safety margin $d_{\text{obs}}^{\text{soft}}$.
+VLM is queried only upon significant perceptual changes or SARL attention shifts, not every cycle.
+
+\subsection{Learned Social Attention via SARL}
+\label{subsec:sarl}
+
+While the VLM captures high-level scene semantics, it cannot model the fine-grained dynamics of individual pedestrian--robot interactions.
+We complement it with a pre-trained SARL value network~\cite{chen2019crowd} that runs at 10\,Hz, providing three outputs that augment the MPC\@.
+
+\subsubsection{Per-pedestrian attention weights}
+SARL's self-attention mechanism produces normalized weights $\alpha_i\in[0,1]$, $\sum_i\alpha_i=1$, that capture each person's behavioral importance given their position, velocity, and the robot's goal direction.
+Unlike uniform proximity penalties, these learned weights concentrate the social cost on pedestrians whose future trajectories most influence navigation safety.
+
+\subsubsection{Action selection}
+We replicate SARL's value-based action evaluation over $|\mathcal{A}|{=}81$ candidates (5 exponential speeds $\times$ 16 rotations + stop), matching the training distribution of~\cite{chen2019crowd}.
+For each candidate $\mathbf{a}{=}(v_x,v_y)$, we propagate the robot and humans one step ($\Delta t_a{=}0.25$\,s) and compute:
+\begin{equation}
+\label{eq:sarl_q}
+Q(\mathbf{a}) = r(s,\mathbf{a}) + \gamma^{\Delta t_a \cdot v_{\text{pref}}} V(s'),
+\end{equation}
+where $r$ encodes collision, goal-reaching, and proximity rewards, and $V(s')$ is evaluated via a single batched forward pass.
+The best action $\hat{\mathbf{a}}{=}\arg\max_{\mathbf{a}} Q(\mathbf{a})$ yields a recommended velocity $(\hat{v},\hat{\theta})$ as a soft reference for MPC\@.
+
+\subsubsection{Terminal value linearization}
+Since $V(s)$ is a black-box neural network incompatible with CasADi's symbolic graph, we linearize it at the predicted terminal state via five-point central finite differences:
+\begin{equation}
+\label{eq:terminal_v}
+\hat{V}(s_N) \approx V_0 + \nabla_{\mathbf{p}} V \cdot (\mathbf{p}_N - \mathbf{p}_{\text{ref}}),
+\end{equation}
+where $\nabla_{\mathbf{p}} V$ is computed by evaluating the SARL batch service at $\mathbf{p}_{\text{ref}} \pm \delta$ in each axis ($\delta{=}0.3$\,m).
+This enables the MPC to steer the terminal state toward socially favorable regions without embedding the neural network in the optimization.
+
+\subsection{SARL-Augmented MPC}
+\label{subsec:mpc}
+
+\subsubsection{Problem formulation}
+
+We solve a nonlinear program over a unicycle model~\cite{stefanini2024efficient} with state $\mathbf{x}_k{=}[x_k,y_k,\theta_k]^\top$ and control $\mathbf{u}_k{=}[v_k,\omega_k]^\top$ at each cycle:
+\begin{equation}
+\label{eq:ocp}
+\begin{aligned}
+\min_{\mathbf{U}}\;\;
+& J_{\text{goal}} + J_{\text{social}} + J_{\text{obs}} + J_{\text{smooth}} + J_{\text{VLM}} + J_{\text{SARL}} \\
+\text{s.t.}\;\;
+& \mathbf{x}_{k+1} = f_d(\mathbf{x}_k,\mathbf{u}_k),\;
+  v_{\min} \le v_k \le v_{\max},\;
+  |\omega_k| \le \omega_{\max}, \\
+& \|\mathbf{p}_k{-}\mathbf{o}_j\| \ge d_{\text{obs}}^{\text{hard}},\;
+  \forall j{\in}\mathcal{O},\; k{=}0,\ldots,N{-}1,
+\end{aligned}
+\end{equation}
+where $J_{\text{goal}}$ penalizes terminal distance to the reference waypoint, $J_{\text{obs}}$ combines a VLM-adaptive barrier and near-field inverse-distance cost, and $J_{\text{smooth}}$ penalizes control discontinuities.
+The CasADi~\cite{andersson2019casadi} symbolic graph is built once; only parameters change between IPOPT~\cite{wachter2006implementation} solves, enabling 10\,Hz control.
+
+\subsubsection{Attention-weighted social cost}
+
+The core SARL contribution replaces the uniform $1/d$ social penalty with an attention-modulated formulation:
+\begin{equation}
+\label{eq:social_attn}
+J_{\text{social}}=w_{\text{social}}\sum_{k=0}^{N-1}\sum_{i=1}^{N_h}\frac{N_h \cdot \alpha_i \cdot m_{\text{attn}}}{\|\mathbf{p}_{k+1}-\mathbf{p}_i\|+\epsilon},
+\end{equation}
+where $\alpha_i$ are the SARL attention weights and $m_{\text{attn}}$ is a VLM scene-dependent multiplier (Sec.~\ref{subsec:synergy}).
+The $N_h$ scaling factor preserves the total cost magnitude while redistributing avoidance effort: pedestrians with high $\alpha_i$ receive proportionally stronger repulsion, while those deemed less relevant by SARL are deprioritized.
+When SARL data is stale, $\alpha_i{=}1/N_h$ recovers the uniform baseline.
+
+\subsubsection{SARL terminal value and action reference}
+\label{subsec:sarl_costs}
+
+SARL contributes two additional terms via $J_{\text{SARL}} = J_{\text{term}}^V + J_{\text{ref}}$.
+
+The linearized value function (Eq.~\ref{eq:terminal_v}) serves as a terminal cost that steers the predicted trajectory toward socially favorable regions:
+\begin{equation}
+J_{\text{term}}^V = -w_t \cdot m_{\text{term}} \cdot \hat{V}(s_N),
+\end{equation}
+where the negation ensures that minimization drives $\mathbf{p}_N$ toward higher $V(s)$, and $m_{\text{term}}$ is a scene-dependent multiplier.
+
+For the first $K$ horizon steps, we add a soft tracking cost toward SARL's recommended velocity $(\hat{v},\hat{\theta})$ with exponential decay:
+\begin{equation}
+J_{\text{ref}} = \sum_{k=0}^{K-1}e^{-k\lambda}\Big[w_v^{\text{ref}}(v_k{-}\hat{v})^2 + w_\theta^{\text{ref}}\big(1{-}\cos(\theta_k{-}\hat{\theta})\big)\Big],
+\end{equation}
+where $\hat{v}{=}\|\hat{\mathbf{a}}\|$ and $\hat{\theta}{=}\text{atan2}(\hat{v}_y,\hat{v}_x)$ from the action selection (Sec.~\ref{subsec:sarl}).
+The decay ($\lambda{=}0.5$, $K{=}3$) provides near-term guidance from the learned policy while letting the MPC's own optimization dominate at longer horizons.
+
+\subsubsection{VLM-derived costs}
+
+From the social template $\mathcal{T}$, we extract four cost terms: a side preference cost $J_{\text{VLM}}^{\text{dir}}$ that biases the trajectory laterally, an action modifier $J_{\text{VLM}}^{\text{action}}$ that penalizes speed when the VLM advises caution, a scene modifier $J_{\text{VLM}}^{\text{scene}}$ that limits velocity in sensitive environments, and a personal distance cost $J_{\text{VLM}}^{\text{pers}}$ that enforces the VLM-specified comfort distance.
+$J_{\text{VLM}}{=}J_{\text{VLM}}^{\text{dir}}{+}J_{\text{VLM}}^{\text{action}}{+}J_{\text{VLM}}^{\text{scene}}{+}J_{\text{VLM}}^{\text{pers}}$.
+The VLM also modulates $v_{\max}$ and the baseline $w_{\text{social}}$ based on pedestrian proximity and the template's speed scaling $\kappa_v$.
+
+\subsubsection{VLM--SARL synergy}
+\label{subsec:synergy}
+
+The two reasoning layers interact bidirectionally.
+\textbf{Synergy~1:} SARL attention weights $\alpha_i$ enrich VLM prompts, labeling each pedestrian with their learned behavioral importance so the VLM can reason about the most critical agents.
+\textbf{Synergy~2:} The VLM scene classification conditions SARL's MPC multipliers $m_{\text{attn}}$ and $m_{\text{term}}$---in constrained spaces (corridors, doorways), per-pedestrian reasoning is amplified; in open areas, it is reduced.
+When either modality is unavailable, the corresponding weights are zeroed, and the system falls back to the remaining source.

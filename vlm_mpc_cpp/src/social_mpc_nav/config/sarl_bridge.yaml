@@ -17,6 +17,11 @@ sarl_bridge_node:
     # Human parameters
     human_default_radius: 0.3  # Default pedestrian radius (meters)
 
+    # Frame configuration
+    map_frame: "map"
+    odom_frame: "tiago_base/odom"
+    base_link_frame: "tiago_base/base_footprint"
+
     # Topic configuration
     odom_topic: "/task_generator_node/tiago_base/odom"
     crowd_topic: "/person_tracker/person_info"

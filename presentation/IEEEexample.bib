@@ -1,0 +1,782 @@
+% An example of a IEEEtran control entry which can change some IEEEtran.bst
+% settings. An entry like this must be cited via \bstctlcite{} command
+% before the first real \cite{}. The same entry key cannot be called twice
+% (just like multiple \cite{} of the same entry key place only one entry
+% in the bibliography.)
+% The available control fields are:
+% 
+% CTLuse_article_number
+% "no" turns off the display of the number for articles.
+% "yes" enables
+%
+% CTLuse_paper
+% "no" turns off the display of the paper and type fields in inproceedings.
+% "yes" enables
+% 
+% CTLuse_forced_etal 
+% "no" turns off the forced use of "et al."
+% "yes" enables
+% 
+% CTLmax_names_forced_etal
+% The maximum number of names that can be present beyond which an "et al."
+% usage is forced. Be sure that CTLnames_show_etal (below)
+% is not greater than this value!
+% 
+% CTLnames_show_etal
+% The number of names that will be shown with a forced "et al.".
+% Must be less than or equal to CTLmax_names_forced_etal
+% 
+% CTLuse_alt_spacing 
+% "no" turns off the alternate interword spacing for entries with URLs.
+% "yes" enables
+% 
+% CTLalt_stretch_factor
+% If alternate interword spacing for entries with URLs is enabled, this is
+% the interword spacing stretch factor that will be used. For example, the
+% default "4" here means that the interword spacing in entries with URLs can
+% stretch to four times normal. Does not have to be an integer.
+% 
+% CTLdash_repeated_names
+% "no" turns off the "dashification" of repeated (i.e., identical to those
+% of the previous entry) names. IEEE normally does this.
+% "yes" enables
+% 
+% CTLname_format_string
+% The name format control string as explained in the BibTeX style hacking
+% guide.
+% IEEE style "{f.~}{vv~}{ll}{, jj}" is the default,
+% 
+% CTL_name_latex_cmd
+% A LaTeX command that each name will be fed to (e.g., "\textsc").
+% Leave empty if no special font is desired for the names.
+% The default is empty.
+% 
+% Those fields that are not to be changed can be left out or empty.
+@IEEEtranBSTCTL{IEEEexample:BSTcontrol,
+  CTLuse_article_number     = "yes",
+  CTLuse_paper              = "yes",
+  CTLuse_forced_etal        = "yes",
+  CTLmax_names_forced_etal  = "10",
+  CTLnames_show_etal        = "3",
+  CTLuse_alt_spacing        = "yes",
+  CTLalt_stretch_factor     = "4",
+  CTLdash_repeated_names    = "yes",
+  CTLname_format_string     = "{f.~}{vv~}{ll}{, jj}",
+  CTLname_latex_cmd         = "",
+  CTLuse_doi = "no",
+  CTLuse_url = "no"
+};
+
+
+@inproceedings{shcherbyna2025arena,
+  title={Arena 4.0: A Comprehensive {ROS2} Development and Benchmarking Platform for Human-Centric Navigation Using Generative-Model-Based Environment Generation},
+  author={Shcherbyna, Volodymyr and Kastner, Linh and Diaz, Diego and Nguyen, Huu Giang and Schreff, Maximilian Ho--Kyoung and Seeger, Tim and Kreutz, Jonas and Martban, Ahmed and Shen, Zhengcheng and Zeng, Huajian and others},
+  booktitle={2025 IEEE International Conference on Robotics and Automation (ICRA)},
+  pages={9138--9144},
+  year={2025},
+  organization={IEEE}
+};
+
+@misc{gb_visual_detection_3d,
+  author       = {{Intelligent Robotics Labs}},
+  title        = {{gb\_visual\_detection\_3d}: {3D} Visual Detection for Robotics},
+  year         = {2023},
+  howpublished = {\url{https://github.com/IntelligentRoboticsLabs/gb_visual_detection_3d}},
+  note         = {Accessed: 2025-12-16}
+};
+
+@inproceedings{varghese2024yolov8,
+  title={{YOLOv8}: A Novel Object Detection Algorithm with Enhanced Performance and Robustness},
+  author={Varghese, Rejin and Sambath, M},
+  booktitle={2024 International conference on advances in data engineering and intelligent computing systems (ADICS)},
+  pages={1--6},
+  year={2024},
+  organization={IEEE}
+};
+
+@article{fox2002dynamic,
+  title={The Dynamic Window Approach to Collision Avoidance},
+  author={Fox, Dieter and Burgard, Wolfram and Thrun, Sebastian},
+  journal={IEEE robotics \& automation magazine},
+  volume={4},
+  number={1},
+  pages={23--33},
+  year={2002},
+  publisher={IEEE}
+};
+
+@article{andersson2019casadi,
+  title={{CasADi}: A Software Framework for Nonlinear Optimization and Optimal Control},
+  author={Andersson, Joel AE and Gillis, Joris and Horn, Greg and Rawlings, James B and Diehl, Moritz},
+  journal={Mathematical Programming Computation},
+  volume={11},
+  number={1},
+  pages={1--36},
+  year={2019},
+  publisher={Springer}
+};
+
+@misc{bai2025qwen3vltechnicalreport,
+      title={{Qwen3-VL} Technical Report}, 
+      author={Shuai Bai and Yuxuan Cai and Ruizhe Chen and Keqin Chen and Xionghui Chen and Zesen Cheng and Lianghao Deng and Wei Ding and Chang Gao and Chunjiang Ge and Wenbin Ge and Zhifang Guo and Qidong Huang and Jie Huang and Fei Huang and Binyuan Hui and Shutong Jiang and Zhaohai Li and Mingsheng Li and Mei Li and Kaixin Li and Zicheng Lin and Junyang Lin and Xuejing Liu and Jiawei Liu and Chenglong Liu and Yang Liu and Dayiheng Liu and Shixuan Liu and Dunjie Lu and Ruilin Luo and Chenxu Lv and Rui Men and Lingchen Meng and Xuancheng Ren and Xingzhang Ren and Sibo Song and Yuchong Sun and Jun Tang and Jianhong Tu and Jianqiang Wan and Peng Wang and Pengfei Wang and Qiuyue Wang and Yuxuan Wang and Tianbao Xie and Yiheng Xu and Haiyang Xu and Jin Xu and Zhibo Yang and Mingkun Yang and Jianxin Yang and An Yang and Bowen Yu and Fei Zhang and Hang Zhang and Xi Zhang and Bo Zheng and Humen Zhong and Jingren Zhou and Fan Zhou and Jing Zhou and Yuanzhi Zhu and Ke Zhu},
+      year={2025},
+      eprint={2511.21631},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2511.21631}, 
+};
+
+@article{hall1966hidden,
+  title={The Hidden Dimension},
+  author={Hall, Edward T},
+  journal={Garden City},
+  year={1966}
+};
+
+@IEEEtranBSTCTL{BSTcontrol,
+  CTLuse_forced_etal       = "yes",
+  CTLmax_names_forced_etal = "3",
+  CTLnames_show_etal       = "3"
+};
+
+@article{hart1968formal,
+  title={A Formal Basis for the Heuristic Determination of Minimum Cost Paths},
+  author={Hart, Peter E and Nilsson, Nils J and Raphael, Bertram},
+  journal={IEEE transactions on Systems Science and Cybernetics},
+  volume={4},
+  number={2},
+  pages={100--107},
+  year={1968},
+  publisher={IEEE}
+};
+
+@article{liu1989limited,
+  title={On the Limited Memory {BFGS} Method for Large Scale Optimization},
+  author={Liu, Dong C and Nocedal, Jorge},
+  journal={Mathematical programming},
+  volume={45},
+  number={1},
+  pages={503--528},
+  year={1989},
+  publisher={Springer}
+};
+
+@article{wang2022deepfusionmot,
+  title={{DeepFusionMOT}: A {3D} Multi-Object Tracking Framework Based on Camera-{LiDAR} Fusion with Deep Association},
+  author={Wang, Xiyang and Fu, Chunyun and Li, Zhankun and Lai, Ying and He, Jiawei},
+  journal={IEEE Robotics and Automation Letters},
+  volume={7},
+  number={3},
+  pages={8260--8267},
+  year={2022},
+  publisher={IEEE}
+};
+
+@inproceedings{kim2021eagermot,
+  title={{EagerMOT}: {3D} Multi-Object Tracking via Sensor Fusion},
+  author={Kim, Aleksandr and O{\v{s}}ep, Aljo{\v{s}}a and Leal-Taix{\'e}, Laura},
+  booktitle={2021 IEEE International conference on Robotics and Automation (ICRA)},
+  pages={11315--11321},
+  year={2021},
+  organization={IEEE}
+};
+
+@article{mavrogiannis_core_2021,
+  title={Core Challenges of Social Robot Navigation: A Survey},
+  author={Mavrogiannis, Christoforos and Baldini, Francesca and Wang, Allan and Zhao, Dapeng and Trautman, Pete and Steinfeld, Aaron and Oh, Jean},
+  journal={ACM Transactions on Human-Robot Interaction},
+  volume={12},
+  number={3},
+  pages={1--39},
+  year={2023},
+  publisher={ACM New York, NY}
+}
+
+@article{moller_survey_2021,
+  title={A Survey on Human-Aware Robot Navigation},
+  author={M{\"o}ller, Ronja and Furnari, Antonino and Battiato, Sebastiano and H{\"a}rm{\"a}, Aki and Farinella, Giovanni Maria},
+  journal={Robotics and Autonomous Systems},
+  volume={145},
+  pages={103837},
+  year={2021},
+  publisher={Elsevier}
+}
+
+
+@article{francis_principles_2023,
+  title={Principles and Guidelines for Evaluating Social Robot Navigation Algorithms},
+  author={Francis, Anthony and P{\'e}rez-d’Arpino, Claudia and Li, Chengshu and Xia, Fei and Alahi, Alexandre and Alami, Rachid and Bera, Aniket and Biswas, Abhijat and Biswas, Joydeep and Chandra, Rohan and others},
+  journal={ACM Transactions on Human-Robot Interaction},
+  volume={14},
+  number={2},
+  pages={1--65},
+  year={2025},
+  publisher={ACM New York, NY}
+}
+
+@article{tsoi_how_2024,
+	title = {How Do Robot Experts Measure the Success of Social Robot Navigation?},
+	doi = {10.1145/3610978.3640636},
+	journal = {IEEE/ACM International Conference on Human-Robot Interaction},
+	author = {Tsoi, Nathan and Romero, Jessica and Vázquez, Marynel},
+	month = mar,
+	year = {2024},
+}
+
+
+@INPROCEEDINGS{le_social_2024,
+  author={Le, Viet-Anh and Chalaki, Behdad and Tadiparthi, Vaishnav and Mahjoub, Hossein Nourkhiz and D’Sa, Jovin and Moradi-Pari, Ehsan},
+  booktitle={2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)}, 
+  title={Social Navigation in Crowded Environments with Model Predictive Control and Deep Learning-Based Human Trajectory Prediction}, 
+  year={2024},
+  volume={},
+  number={},
+  pages={4793-4799},
+  keywords={Pedestrians;Navigation;Robot kinematics;Computational modeling;Predictive models;Prediction algorithms;Trajectory;Planning;Robots;Predictive control},
+  doi={10.1109/IROS58592.2024.10802371}}
+
+
+@article{han_dr-mpc_2025,
+	title = {{DR}-{MPC}: Deep Residual Model Predictive Control for Real-World Social Navigation},
+	volume = {10},
+	number = {4},
+	pages = {4029--4036},
+	doi = {10.1109/LRA.2025.3546106},
+	journal = {IEEE Robotics and Automation Letters},
+	author = {Han, James R. and Thomas, Hugues and Zhang, Jian and Rhinehart, Nicholas and Barfoot, Timothy D.},
+	month = apr,
+	year = {2025},
+}
+
+@article{kathuria_learning_2025,
+	title = {Learning Implicit Social Navigation Behavior Using Deep Inverse Reinforcement Learning},
+	volume = {10},
+	number = {5},
+	pages = {5146--5153},
+	doi = {10.1109/LRA.2025.3557299},
+	journal = {IEEE Robotics and Automation Letters},
+	author = {Kathuria, Tribhi and Liu, Ke and Jang, Junwoo and Yang, X. Jessie and Ghaffari, Maani},
+	month = may,
+	year = {2025},
+}
+
+@article{okunevich_online_2025,
+	title = {Online Context Learning for Socially Compliant Navigation},
+	volume = {10},
+	number = {5},
+	pages = {5042--5049},
+	doi = {10.1109/LRA.2025.3557309},
+	journal = {IEEE Robotics and Automation Letters},
+	author = {Okunevich, Iaroslav and Lombard, Alexandre and Krajnik, Tomas and Ruichek, Yassine and Yan, Zhi},
+	month = may,
+	year = {2025},
+}
+
+@article{schmuck_sang_2025,
+	title = {{SANG}: Socially Aware Navigation Between Groups},
+	volume = {17},
+	number = {6},
+	pages = {989--1002},
+	doi = {10.1007/s12369-025-01250-5},
+	journal = {International Journal of Social Robotics},
+	author = {Schmuck, Viktor and Celiktutan, Oya},
+	month = jun,
+	year = {2025},
+}
+
+@article{liao_following_2025,
+	title = {Following is All You Need: Robot Crowd Navigation Using People as Planners},
+	volume = {10},
+	number = {10},
+	pages = {9814--9821},
+	doi = {10.1109/LRA.2025.3598567},
+	journal = {IEEE Robotics and Automation Letters},
+	author = {Liao, Yuwen and Xu, Xinhang and Bai, Ruofei and Yang, Yizhuo and Cao, Muqing and Yuan, Shenghai and Xie, Lihua},
+	month = oct,
+	year = {2025},
+}
+
+@ARTICLE{song_vlm-social-nav_2024,
+  author={Song, Daeun and Liang, Jing and Payandeh, Amirreza and Raj, Amir Hossain and Xiao, Xuesu and Manocha, Dinesh},
+  journal={IEEE Robotics and Automation Letters}, 
+  title={{VLM-Social-Nav}: Socially Aware Robot Navigation Through Scoring Using Vision-Language Models}, 
+  year={2025},
+  volume={10},
+  number={1},
+  pages={508-515},
+  keywords={Navigation;Robots;Costs;Computational modeling;Collision avoidance;Social robots;Safety;Real-time systems;Planning;Vehicle dynamics;Motion and path planning;task and motion planning;integrated planning and control},
+  doi={10.1109/LRA.2024.3511409}}
+
+
+@article{luo_gson_2025,
+	title = {{GSON}: A Group-Based Social Navigation Framework With Large Multimodal Model},
+	volume = {10},
+	number = {10},
+	pages = {9646--9653},
+	doi = {10.1109/LRA.2025.3595038},
+	journal = {IEEE Robotics and Automation Letters},
+	author = {Luo, Shangyi and Sun, Peng and Zhu, Ji and Deng, Yuhong and Yu, Cunjun and {Anxing Xiao} and Wang, Xueqian},
+	month = oct,
+	year = {2025},
+}
+
+@INPROCEEDINGS{sathyamoorthy_convoi_2024,
+  author={Sathyamoorthy, Adarsh Jagan and Weerakoon, Kasun and Elnoor, Mohamed and Zore, Anuj and Ichter, Brian and Xia, Fei and Tan, Jie and Yu, Wenhao and Manocha, Dinesh},
+  booktitle={2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)}, 
+  title={{CoNVOI}: Context-Aware Navigation Using Vision Language Models in Outdoor and Indoor Environments}, 
+  year={2024},
+  volume={},
+  number={},
+  pages={13837-13844},
+  keywords={Visualization;Navigation;Semantics;Cognition;Trajectory;Indoor environment;Intelligent robots;Image classification;Context modeling;Autonomous robots},
+  doi={10.1109/IROS58592.2024.10802716}}
+
+@INPROCEEDINGS{narasimhan_olivia-nav_2024,
+  author={Narasimhan, Siddarth and Tan, Aaron Hao and Choi, Daniel and Nejat, Goldie},
+  booktitle={2025 IEEE International Conference on Robotics and Automation (ICRA)}, 
+  title={{OLiVia-Nav}: An Online Lifelong Vision Language Approach for Mobile Robot Social Navigation}, 
+  year={2025},
+  volume={},
+  number={},
+  pages={9130-9137},
+  keywords={Navigation;Trajectory planning;Service robots;Hospitals;Buildings;Cognition;Trajectory;Safety;Mobile robots;Robots},
+  doi={10.1109/ICRA55743.2025.11128004}}
+
+@article{elnoor_vi-lad_2025,
+  title={Vi-LAD: Vision-Language Attention Distillation for Socially-Aware Robot Navigation in Dynamic Environments},
+  author={Elnoor, Mohamed and Weerakoon, Kasun and Seneviratne, Gershom and Liang, Jing and Rajagopal, Vignesh and Manocha, Dinesh},
+  journal={arXiv:2503.09820},
+  year={2025}
+}
+
+@misc{kong_autospatial_2025,
+	title = {{AutoSpatial}: Visual-Language Reasoning for Social Robot Navigation Through Efficient Spatial Reasoning Learning},
+	doi = {10.48550/ARXIV.2503.07557},
+	publisher = {arXiv},
+	author = {Kong, Yangzhe and Song, Daeun and Liang, Jing and Manocha, Dinesh and Yao, Ziyu and Xiao, Xuesu},
+	month = mar,
+	year = {2025},
+}
+
+@article{ruo_llm-based_2025,
+	title = {An {LLM}-Based Architecture for Socially Intelligent Robot Navigation Based on Social Cues},
+	doi = {10.1109/ro-man63969.2025.11217843},
+	journal = {IEEE International Symposium on Robot and Human Interactive Communication},
+	author = {Ruo, Andrea and Cacace, Jonathan and Dalmau-Moreno, Magí and Sabattini, Lorenzo and Villani, Valeria},
+	month = aug,
+	year = {2025},
+}
+
+@article{chandra_deadlock-free_2025,
+	title = {Deadlock-Free, Safe, and Decentralized Multi-Robot Navigation in Social Mini-Games via Discrete-Time Control Barrier Functions},
+	volume = {49},
+	number = {2},
+	doi = {10.1007/s10514-025-10194-8},
+	journal = {Autonomous Robots},
+	author = {Chandra, Rohan and Zinage, Vrushabh and Bakolas, Efstathios and Stone, Peter and Biswas, Joydeep},
+	month = jun,
+	year = {2025},
+	pages = {12},
+}
+
+@misc{wang_unifying_2024,
+	title = {Unifying Large Language Model and Deep Reinforcement Learning for Human-in-Loop Interactive Socially-Aware Navigation},
+	publisher = {arXiv},
+	author = {Wang, Weizheng and Obi, Ike and Bera, Aniket and Min, Byung-Cheol},
+	month = mar,
+	year = {2024},
+}
+
+@article{wang_multi-agent_2025,
+  title={Multi-Agent {LLM} Actor-Critic Framework for Social Robot Navigation},
+  author={Wang, Weizheng and Obi, Ike and Min, Byung-Cheol},
+  journal={arXiv:2503.09758},
+  year={2025}
+}
+
+@inproceedings{sotomi_transparent_2025,
+	title = {Transparent Social Navigation for Autonomous Mobile Robots via Vision-Language Models},
+	booktitle = {2025 34th {IEEE} {International} {Conference} on {Robot} and {Human} {Interactive} {Communication} ({RO}-{MAN})},
+	publisher = {IEEE},
+	author = {Sotomi, Oluwadamilola and Kodi, Devika and Arab, Aliasghar},
+	doi = {10.1109/RO-MAN63969.2025.11217693},
+	month = aug,
+	year = {2025},
+	pages = {1646--1651},
+}
+
+
+@inproceedings{zhou_navgpt_2023,
+  title={{NavGPT}: Explicit Reasoning in Vision-and-Language Navigation with Large Language Models},
+  author={Zhou, Gengze and Hong, Yicong and Wu, Qi},
+  booktitle={AAAI Conference on Artificial Intelligence},
+  volume={38},
+  number={7},
+  pages={7641--7649},
+  year={2024}
+}
+
+@inproceedings{zhou_navgpt-2_2024,
+  title={{NavGPT-2}: Unleashing Navigational Reasoning Capability for Large Vision-Language Models},
+  author={Zhou, Gengze and Hong, Yicong and Wang, Zun and Wang, Xin Eric and Wu, Qi},
+  booktitle={European Conference on Computer Vision},
+  pages={260--278},
+  year={2024},
+  organization={Springer}
+}
+
+@article{burgard_rhino_1999,
+  author  = {Wolfram Burgard and Armin B. Cremers and Dieter Fox and Dirk H{\"a}hnel and Gerhard Lakemeyer and Dirk Schulz and Walter Steiner and Sebastian Thrun},
+  title   = {Experiences with an Interactive Museum Tour-Guide Robot},
+  journal = {Artificial Intelligence},
+  volume  = {114},
+  number  = {1--2},
+  pages   = {3--55},
+  year    = {1999},
+  doi     = {10.1016/S0004-3702(99)00070-3}
+}
+
+@article{thrun_minerva_2000,
+  author  = {Sebastian Thrun and Maren Bennewitz and Wolfram Burgard and Armin B. Cremers and Frank Dellaert and Dieter Fox and Dirk Hahnel and Charles Rosenberg and Nicholas Roy and Jamieson Schulte and Dirk Schulz},
+  title   = {Probabilistic Algorithms and the Interactive Museum Tour-Guide Robot {Minerva}},
+  journal = {The International Journal of Robotics Research},
+  volume  = {19},
+  number  = {11},
+  pages   = {972--999},
+  year    = {2000},
+  doi     = {10.1177/02783640022067922}
+}
+
+@article{pineau_nursinghomes_2003,
+  author  = {Joelle Pineau and Michael Montemerlo and Martha E. Pollack and Nicholas Roy and Sebastian Thrun},
+  title   = {Towards Robotic Assistants in Nursing Homes: Challenges and Results},
+  journal = {Robotics and Autonomous Systems},
+  volume  = {42},
+  number  = {3--4},
+  pages   = {271--281},
+  year    = {2003},
+  doi     = {10.1016/S0921-8890(02)00381-0}
+}
+
+@article{kruse_survey_2013,
+  author  = {Tim Kruse and Patricia K. Pandey and Rachid Alami and Alexandra Kirsch},
+  title   = {Human-Aware Robot Navigation: A Survey},
+  journal = {Robotics and Autonomous Systems},
+  volume  = {61},
+  number  = {12},
+  pages   = {1726--1743},
+  year    = {2013},
+  doi     = {10.1016/j.robot.2013.05.007}
+}
+
+@article{helbing_socialforce_1995,
+  author  = {Dirk Helbing and Peter Moln{\'a}r},
+  title   = {Social Force Model for Pedestrian Dynamics},
+  journal = {Physical Review E},
+  volume  = {51},
+  number  = {5},
+  pages   = {4282--4286},
+  year    = {1995},
+  doi     = {10.1103/PhysRevE.51.4282}
+}
+
+@incollection{van_den_berg_orca_2011,
+  author    = {J. van den Berg and Stephen J. Guy and Ming Lin and Dinesh Manocha},
+  title     = {Reciprocal n-Body Collision Avoidance},
+  booktitle = {Robotics Research},
+  publisher = {Springer},
+  year      = {2011},
+  pages     = {3--19}
+}
+
+@article{sisbot_hamp_2007,
+  author  = {Emrah Akin Sisbot and Luis Marin-Urias and Rachid Alami and Thierry Simeon},
+  title   = {A Human-Aware Mobile Robot Motion Planner},
+  journal = {IEEE Transactions on Robotics},
+  volume  = {23},
+  number  = {5},
+  pages   = {874--883},
+  year    = {2007},
+  doi     = {10.1109/TRO.2007.904911}
+}
+
+@inproceedings{trautman_unfreezing_2010,
+  author    = {Peter Trautman and Andreas Krause},
+  title     = {Unfreezing the Robot: Navigation in Dense, Interacting Crowds},
+  booktitle = {2010 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  year      = {2010},
+  pages     = {797--803},
+  doi       = {10.1109/IROS.2010.5654369}
+}
+
+@inproceedings{chen_socially_aware_drl_2017,
+  author    = {Yu Fan Chen and Michael Everett and Mingze Liu and Jonathan P. How},
+  title     = {Socially Aware Motion Planning with Deep Reinforcement Learning},
+  booktitle = {2017 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  year      = {2017},
+  pages     = {1343--1350},
+  doi       = {10.1109/IROS.2017.8202312}
+}
+
+@article{driess_palme_2023,
+  author  = {Danny Driess and Fei Xia and others},
+  title   = {{PaLM-E}: An Embodied Multimodal Language Model},
+  journal = {arXiv:2303.03378},
+  year    = {2023}
+}
+
+@inproceedings{huang_vlmaps_2023,
+  author    = {Chenguang Huang and Oier Mees and Andy Zeng and Wolfram Burgard},
+  title     = {Visual Language Maps for Robot Navigation},
+  booktitle = {2023 IEEE International Conference on Robotics and Automation (ICRA)},
+  year      = {2023},
+  pages     = {10608--10615}
+}
+
+@inproceedings{rajvanshi_saynav_2024,
+  author    = {Abhinav Rajvanshi and Karan Sikka and Xiao Lin and Bhoram Lee and Han{-}Pang Chiu and Alvaro Velasquez},
+  title     = {SayNav: Grounding Large Language Models for Dynamic Planning to Navigation in New Environments},
+  booktitle = {34th International Conference on Automated Planning and Scheduling (ICAPS)},
+  year      = {2024},
+  pages     = {586--595},
+  doi       = {10.1609/icaps.v34i1.31506}
+}
+
+@inproceedings{shah_lm-nav_2022,
+  title={{LM-Nav}: Robotic Navigation with Large Pre-Trained Models of Language, Vision, and Action},
+  author={Shah, Dhruv and Osi{\'n}ski, B{\l}a{\.z}ej and Levine, Sergey and others},
+  booktitle={Conference on robot learning},
+  pages={492--504},
+  year={2023},
+  organization={PMLR}
+}
+
+@INPROCEEDINGS{Social-LLaVA,
+  author={Payandeh, Amirreza and Song, Daeun and Nazeri, Mohammad and Liang, Jing and Mukherjee, Praneel and Raj, Amir Hossain and Kong, Yangzhe and Manocha, Dinesh and Xiao, Xuesu},
+  booktitle={2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)}, 
+  title={{Social-LLaVA}: Enhancing Social Robot Navigation Through Human-Language Reasoning}, 
+  year={2025},
+  volume={},
+  number={},
+  pages={17192-17198},
+  keywords={Bridges;Visualization;Navigation;Social robots;Cognition;Question answering (information retrieval);Mobile robots;Intelligent robots},
+  doi={10.1109/IROS60139.2025.11247618}}
+
+@article{choi2024reducing,
+  title={Reducing the burdens of paid caregivers of older adults by using assistive technology: A scoping review},
+  author={Choi, U Yeong and Patterson, Patrick and Chinho, Norma},
+  journal={Western Journal of Nursing Research},
+  volume={46},
+  number={4},
+  pages={315--326},
+  year={2024},
+  publisher={SAGE Publications Sage CA: Los Angeles, CA}
+}
+
+@article{silvera2024robotics,
+  title={Robotics in healthcare: a survey},
+  author={Silvera-Tawil, David},
+  journal={SN Computer Science},
+  volume={5},
+  number={1},
+  pages={189},
+  year={2024},
+  publisher={Springer}
+}
+
+@article{de2019robot,
+  title={Robot navigation in domestic environments: Experiences using {RGB-D} sensors in real homes},
+  author={De La Puente, Paloma and Bajones, Markus and Reuther, Christian and Wolf, Daniel and Fischinger, David and Vincze, Markus},
+  journal={Journal of Intelligent \& Robotic Systems},
+  volume={94},
+  number={2},
+  pages={455--470},
+  year={2019},
+  publisher={Springer}
+}
+
+@article{lampropoulos2025social,
+  title={Social robots in education: Current trends and future perspectives},
+  author={Lampropoulos, Georgios},
+  journal={Information},
+  volume={16},
+  number={1},
+  pages={29},
+  year={2025},
+  publisher={MDPI}
+}
+
+@article{samavi2024sicnav,
+  title={Sicnav: Safe and interactive crowd navigation using model predictive control and bilevel optimization},
+  author={Samavi, Sepehr and Han, James R and Shkurti, Florian and Schoellig, Angela P},
+  journal={IEEE Transactions on Robotics},
+  year={2024},
+  publisher={IEEE}
+}
+
+@article{liang2021vo,
+  title={OF-VO: Efficient navigation among pedestrians using commodity sensors},
+  author={Liang, Jing and Qiao, Yi-Ling and Guan, Tianrui and Manocha, Dinesh},
+  journal={IEEE Robotics and Automation Letters},
+  volume={6},
+  number={4},
+  pages={6148--6155},
+  year={2021},
+  publisher={IEEE}
+}
+
+@article{kong2025autospatial,
+  title={Autospatial: Visual-language reasoning for social robot navigation through efficient spatial reasoning learning},
+  author={Kong, Yangzhe and Song, Daeun and Liang, Jing and Manocha, Dinesh and Yao, Ziyu and Xiao, Xuesu},
+  journal={arXiv:2503.07557},
+  year={2025}
+}
+
+@article{wachter2006implementation,
+  title={On the implementation of an interior-point filter line-search algorithm for large-scale nonlinear programming},
+  author={W{\"a}chter, Andreas and Biegler, Lorenz T},
+  journal={Mathematical programming},
+  volume={106},
+  number={1},
+  pages={25--57},
+  year={2006},
+  publisher={Springer}
+}
+
+@inproceedings{kwon2023efficient,
+  title={Efficient memory management for large language model serving with pagedattention},
+  author={Kwon, Woosuk and Li, Zhuohan and Zhuang, Siyuan and Sheng, Ying and Zheng, Lianmin and Yu, Cody Hao and Gonzalez, Joseph and Zhang, Hao and Stoica, Ion},
+  booktitle={29th symposium on operating systems principles},
+  pages={611--626},
+  year={2023}
+}
+
+@article{perez2023hunavsim,
+  title={Hunavsim: A ros 2 human navigation simulator for benchmarking human-aware robot navigation},
+  author={P{\'e}rez-Higueras, No{\'e} and Otero, Roberto and Caballero, Fernando and Merino, Luis},
+  journal={IEEE robotics and automation letters},
+  volume={8},
+  number={11},
+  pages={7130--7137},
+  year={2023},
+  publisher={IEEE}
+}
+
+@misc{pal_tiago_base_datasheet,
+  author       = {{PAL Robotics}},
+  title        = {{TIAGo Base Datasheet}},
+  year         = {2024},
+  howpublished = {\url{https://pal-robotics.com/wp-content/uploads/2024/05/Datasheet_TIAGo-Base.pdf}},
+  urldate      = {2026-01-03},
+  note         = {Accessed: 2026-01-03}
+}
+
+@ARTICLE{stefanini2024efficient,
+  author={Stefanini, Elisa and Palmieri, Luigi and Rudenko, Andrey and Hielscher, Till and Linder, Timm and Pallottino, Lucia},
+  journal={IEEE Robotics and Automation Letters}, 
+  title={Efficient Context-Aware Model Predictive Control for Human-Aware Navigation}, 
+  year={2024},
+  volume={9},
+  number={11},
+  pages={9494-9501},
+  keywords={Three-dimensional displays;Navigation;Collision avoidance;Robot kinematics;Safety;Human activity recognition;Motion planning;Path planning;Autonomous agents;Human-aware motion planning;motion and path planning;autonomous agents},
+  doi={10.1109/LRA.2024.3461552}}
+
+@article{trautman2015robot,
+  title={Robot navigation in dense human crowds: Statistical models and experimental studies of human--robot cooperation},
+  author={Trautman, Pete and Ma, Jeremy and Murray, Richard M and Krause, Andreas},
+  journal={The International Journal of Robotics Research},
+  volume={34},
+  number={3},
+  pages={335--356},
+  year={2015},
+  publisher={SAGE Publications Sage UK: London, England}
+}
+
+@article{kamezaki2022reactive,
+  title={Reactive, proactive, and inducible proximal crowd robot navigation method based on inducible social force model},
+  author={Kamezaki, Mitsuhiro and Tsuburaya, Yusuke and Kanada, Taichi and Hirayama, Michiaki and Sugano, Shigeki},
+  journal={IEEE Robotics and Automation Letters},
+  volume={7},
+  number={2},
+  pages={3922--3929},
+  year={2022},
+  publisher={IEEE}
+}
+
+@article{francis2025principles,
+  title={Principles and guidelines for evaluating social robot navigation algorithms},
+  author={Francis, Anthony and P{\'e}rez-d’Arpino, Claudia and Li, Chengshu and Xia, Fei and Alahi, Alexandre and Alami, Rachid and Bera, Aniket and Biswas, Abhijat and Biswas, Joydeep and Chandra, Rohan and others},
+  journal={ACM Transactions on Human-Robot Interaction},
+  volume={14},
+  number={2},
+  pages={1--65},
+  year={2025},
+  publisher={ACM New York, NY}
+}
+
+@inproceedings{narayanan2020proxemo,
+  title={Proxemo: Gait-based emotion learning and multi-view proxemic fusion for socially-aware robot navigation},
+  author={Narayanan, Venkatraman and Manoghar, Bala Murali and Dorbala, Vishnu Sashank and Manocha, Dinesh and Bera, Aniket},
+  booktitle={2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  pages={8200--8207},
+  year={2020},
+  organization={IEEE}
+}
+
+@inproceedings{yokoyama2024vlfm,
+  title={Vlfm: Vision-language frontier maps for zero-shot semantic navigation},
+  author={Yokoyama, Naoki and Ha, Sehoon and Batra, Dhruv and Wang, Jiuguang and Bucher, Bernadette},
+  booktitle={2024 IEEE International Conference on Robotics and Automation (ICRA)},
+  pages={42--48},
+  year={2024},
+  organization={IEEE}
+}
+
+
+@article{bae2023sit,
+  title={Sit dataset: socially interactive pedestrian trajectory dataset for social navigation robots},
+  author={Bae, Jong Wook and Kim, Jungho and Yun, Junyong and Kang, Changwon and Choi, Jeongseon and Kim, Chanhyeok and Lee, Junho and Choi, Jungwook and Choi, Jun Won},
+  journal={Advances in neural information processing systems},
+  volume={36},
+  pages={24552--24563},
+  year={2023}
+}
+
+@article{yan2020,
+      title={Robot Perception of Static and Dynamic Objects with an Autonomous Floor Scrubber}, 
+      author={Zhi Yan and Simon Schreiberhuber and Georg Halmetschlager and Tom Duckett and Markus Vincze and Nicola Bellotto},
+      journal={Intelligent Service Robotics},
+      volume={13},
+      pages={403–417},
+      year={2020}
+}
+
+@article{hirose2023sacson,
+  title={Sacson: Scalable autonomous control for social navigation},
+  author={Hirose, Noriaki and Shah, Dhruv and Sridhar, Ajay and Levine, Sergey},
+  journal={IEEE Robotics and Automation Letters},
+  volume={9},
+  number={1},
+  pages={49--56},
+  year={2023},
+  publisher={IEEE}
+}
+
+@inproceedings{martinez2025hey,
+  title={Hey robot! Personalizing robot navigation through model predictive control with a large language model},
+  author={Martinez-Baselga, Diego and de Groot, Oscar and Knoedler, Luzia and Alonso-Mora, Javier and Riazuelo, Luis and Montano, Luis},
+  booktitle={2025 IEEE International Conference on Robotics and Automation (ICRA)},
+  pages={11002--11009},
+  year={2025},
+  organization={IEEE}
+}
+
+@inproceedings{chen2019crowd,
+  author    = {Changan Chen and Yuejiang Liu and Sven Kreiss and Alexandre Alahi},
+  title     = {Crowd-Robot Interaction: Crowd-aware Robot Navigation with Attention-based Deep Reinforcement Learning},
+  booktitle = {2019 International Conference on Robotics and Automation (ICRA)},
+  year      = {2019},
+  pages     = {6015--6022},
+  publisher = {IEEE}
+}

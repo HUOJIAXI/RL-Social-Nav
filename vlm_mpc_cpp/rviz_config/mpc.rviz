@@ -434,11 +434,11 @@ Visualization Manager:
       Enabled: true
       Name: SARL Attention
       Namespaces:
+        sarl_action_arrow: true
+        sarl_action_text: true
         sarl_attention: true
         sarl_attention_text: true
         sarl_state_value: true
-        sarl_action_arrow: true
-        sarl_action_text: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -447,21 +447,17 @@ Visualization Manager:
         Value: /sarl/attention_markers
       Value: true
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
+      Enabled: false
       Name: SARL MPC
       Namespaces:
-        sarl_ref_heading: true
-        mpc_cmd_arrow: true
-        terminal_state: true
-        terminal_v_gradient: true
-        terminal_v_info: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /sarl/mpc_markers
-      Value: true
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -508,25 +504,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 1.3226163387298584
+      Distance: 6.846069812774658
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -4.355035305023193
-        Y: 5.1993184089660645
-        Z: 3.8677163124084473
+        X: -1.1952555179595947
+        Y: 10.207925796508789
+        Z: 3.082655191421509
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6697971820831299
+      Pitch: 0.6097968220710754
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 1.2353976964950562
+      Yaw: 1.2153977155685425
     Saved: ~
 Window Geometry:
   Displays:

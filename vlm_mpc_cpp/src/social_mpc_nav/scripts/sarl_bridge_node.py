@@ -30,6 +30,10 @@ from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
 from tf_transformations import euler_from_quaternion
 
+import tf2_ros
+from geometry_msgs.msg import PoseStamped
+from tf2_geometry_msgs import do_transform_pose_stamped
+
 from social_mpc_nav.msg import SARLOutput
 from social_mpc_nav.srv import EvaluateSARLBatch
 
@@ -248,6 +252,8 @@ class SARLBridgeNode(Node):
         self.declare_parameter('goal_y', 0.0)
         self.declare_parameter('marker_topic', '/sarl/attention_markers')
         self.declare_parameter('map_frame', 'map')
+        self.declare_parameter('odom_frame', 'tiago_base/odom')
+        self.declare_parameter('base_link_frame', 'tiago_base/base_footprint')
 
         # Action selection parameters (Enhancement C)
         self.declare_parameter('enable_action_selection', True)
@@ -269,6 +275,8 @@ class SARLBridgeNode(Node):
         self.goal_y = self.get_parameter('goal_y').value
         marker_topic = self.get_parameter('marker_topic').value
         self.map_frame = self.get_parameter('map_frame').value
+        self.odom_frame = self.get_parameter('odom_frame').value
+        self.base_link_frame = self.get_parameter('base_link_frame').value
 
         # Action selection config
         self.enable_action_selection = \
@@ -295,8 +303,13 @@ class SARLBridgeNode(Node):
         else:
             self.action_space = None
 
+        # TF2 for odom -> map transform
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
         # State storage
         self.latest_odom = None
+        self.robot_map_pose = None  # robot position in map frame
         self.latest_people = []  # list of dicts: {name, px, py, vx, vy}
 
         # Subscribers
@@ -475,6 +488,73 @@ class SARLBridgeNode(Node):
 
         return best_action
 
+    # --- TF lookup ---
+
+    def _get_robot_in_map_frame(self):
+        """
+        Look up robot position in map frame via TF, matching the C++ nodes.
+        Returns dict {px, py, yaw, vx, vy} in map frame, or None on failure.
+        """
+        if self.latest_odom is None:
+            return None
+
+        try:
+            # Look up odom -> map transform
+            transform = self.tf_buffer.lookup_transform(
+                self.map_frame, self.odom_frame,
+                rclpy.time.Time())
+
+            # Create pose in odom frame
+            pose_odom = PoseStamped()
+            pose_odom.header.frame_id = self.odom_frame
+            pose_odom.header.stamp = self.get_clock().now().to_msg()
+            pose_odom.pose.position.x = self.latest_odom['px']
+            pose_odom.pose.position.y = self.latest_odom['py']
+            pose_odom.pose.position.z = 0.0
+
+            # Set orientation from odom yaw
+            yaw = self.latest_odom['yaw']
+            pose_odom.pose.orientation.z = math.sin(yaw / 2.0)
+            pose_odom.pose.orientation.w = math.cos(yaw / 2.0)
+
+            # Transform to map frame
+            pose_map = do_transform_pose_stamped(pose_odom, transform)
+
+            q = pose_map.pose.orientation
+            _, _, map_yaw = euler_from_quaternion([q.x, q.y, q.z, q.w])
+
+            map_px = pose_map.pose.position.x
+            map_py = pose_map.pose.position.y
+
+            # Rotate velocity to map frame using the map yaw
+            # (odom vx/vy are already in world-like frame from _on_odom)
+            odom_vx = self.latest_odom['vx']
+            odom_vy = self.latest_odom['vy']
+            # The transform rotation applies to velocity too
+            rot_yaw = math.atan2(
+                2.0 * (transform.transform.rotation.w *
+                       transform.transform.rotation.z),
+                1.0 - 2.0 * (transform.transform.rotation.z ** 2))
+            cos_r = math.cos(rot_yaw)
+            sin_r = math.sin(rot_yaw)
+            map_vx = odom_vx * cos_r - odom_vy * sin_r
+            map_vy = odom_vx * sin_r + odom_vy * cos_r
+
+            return {
+                'px': map_px, 'py': map_py,
+                'yaw': map_yaw,
+                'vx': map_vx, 'vy': map_vy,
+            }
+
+        except (tf2_ros.LookupException,
+                tf2_ros.ConnectivityException,
+                tf2_ros.ExtrapolationException) as ex:
+            self.get_logger().warn(
+                f'TF lookup {self.odom_frame} -> {self.map_frame} failed: {ex}. '
+                f'Falling back to raw odom.', throttle_duration_sec=5.0)
+            # Fallback: use raw odom (will be wrong if frames diverge)
+            return self.latest_odom
+
     # --- Subscriber callbacks ---
 
     def _on_odom(self, msg):
@@ -522,10 +602,15 @@ class SARLBridgeNode(Node):
         if self.latest_odom is None or not self.latest_people:
             return
 
-        odom = self.latest_odom
+        # Get robot position in map frame (people are in map frame)
+        robot_pose = self._get_robot_in_map_frame()
+        if robot_pose is None:
+            return
+        self.robot_map_pose = robot_pose
+
         robot_state = {
-            'px': odom['px'], 'py': odom['py'],
-            'vx': odom['vx'], 'vy': odom['vy'],
+            'px': robot_pose['px'], 'py': robot_pose['py'],
+            'vx': robot_pose['vx'], 'vy': robot_pose['vy'],
             'radius': self.robot_radius,
             'gx': self.goal_x, 'gy': self.goal_y,
             'v_pref': self.robot_v_pref,
@@ -561,9 +646,9 @@ class SARLBridgeNode(Node):
         msg.attention_weights = self.model.attention_weights.tolist()
         msg.person_names = [p['name'] for p in self.latest_people]
         msg.state_value = float(value.item())
-        msg.robot_x = float(odom['px'])
-        msg.robot_y = float(odom['py'])
-        msg.robot_yaw = float(odom['yaw'])
+        msg.robot_x = float(robot_pose['px'])
+        msg.robot_y = float(robot_pose['py'])
+        msg.robot_yaw = float(robot_pose['yaw'])
 
         # Recommended action fields
         msg.recommended_vx = float(recommended_vx)
@@ -648,7 +733,7 @@ class SARLBridgeNode(Node):
             marker_array.markers.append(text)
 
         # State value text at robot position
-        if self.latest_odom is not None:
+        if self.robot_map_pose is not None:
             value_text = Marker()
             value_text.header.frame_id = self.map_frame
             value_text.header.stamp = now
@@ -656,8 +741,8 @@ class SARLBridgeNode(Node):
             value_text.id = 0
             value_text.type = Marker.TEXT_VIEW_FACING
             value_text.action = Marker.ADD
-            value_text.pose.position.x = float(self.latest_odom['px'])
-            value_text.pose.position.y = float(self.latest_odom['py'])
+            value_text.pose.position.x = float(self.robot_map_pose['px'])
+            value_text.pose.position.y = float(self.robot_map_pose['py'])
             value_text.pose.position.z = 2.5
             value_text.scale.z = 0.3
             value_text.color.r = 0.3
@@ -670,12 +755,12 @@ class SARLBridgeNode(Node):
             marker_array.markers.append(value_text)
 
         # SARL recommended action arrow
-        if has_rec_action and self.latest_odom is not None:
+        if has_rec_action and self.robot_map_pose is not None:
             speed = math.sqrt(rec_vx ** 2 + rec_vy ** 2)
             if speed > 0.01:
                 heading = math.atan2(rec_vy, rec_vx)
-                rx = float(self.latest_odom['px'])
-                ry = float(self.latest_odom['py'])
+                rx = float(self.robot_map_pose['px'])
+                ry = float(self.robot_map_pose['py'])
 
                 # Arrow marker showing recommended velocity direction
                 arrow = Marker()
